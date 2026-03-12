@@ -177,4 +177,19 @@ describe('LexplosionApp', () => {
     expect(screen.getByText(/No words left on the board/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Restart run' })).toBeInTheDocument()
   })
+
+  it('lets the player shuffle with a visible penalty', () => {
+    renderApp([
+      'CATQZX',
+      'RLMNVB',
+      'SPTUWE',
+      'ODGHIK',
+      'YJBCDF',
+      'EGHIRT',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: /Shuffle -75/i }))
+
+    expect(screen.getByText('Board shuffled for -75.')).toBeInTheDocument()
+  })
 })

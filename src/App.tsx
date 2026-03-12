@@ -8,8 +8,8 @@ import {
   useState,
 } from 'react'
 import './App.css'
-import { STEP_DURATIONS } from './game/constants'
-import { createGame, positionsToWord, submitSelection } from './game/engine'
+import { SHUFFLE_PENALTY, STEP_DURATIONS } from './game/constants'
+import { createGame, positionsToWord, shuffleGame, submitSelection } from './game/engine'
 import type {
   GameState,
   Position,
@@ -24,6 +24,7 @@ interface LexplosionAppProps {
 }
 
 const TILE_SNAP_RATIO = 0.34
+const INVALID_FLASH_MS = 360
 
 function formatCombo(combo: number): string {
   return combo > 1 ? `${combo}x cascade` : combo === 1 ? 'Word hit' : 'Ready'
@@ -49,6 +50,8 @@ export function LexplosionApp({
   const isDraggingRef = useRef(false)
   const activePointerIdRef = useRef<number | null>(null)
   const boardRef = useRef<HTMLDivElement | null>(null)
+  const invalidResetTimeoutRef = useRef<number | null>(null)
+  const [invalidPath, setInvalidPath] = useState<Position[]>([])
 
   const animationDurations = useMemo(
     () => ({ ...STEP_DURATIONS, ...stepDurations }),
@@ -120,26 +123,67 @@ export function LexplosionApp({
 
   const highlightedPositions = useMemo(() => {
     const selected = new Set(game.selectedPath.map(hashPosition))
+    const invalid = new Set(invalidPath.map(hashPosition))
     const cleared = new Set(activeStep?.clearedPositions.map(hashPosition) ?? [])
     const moved = new Set(activeStep?.movedPositions.map(hashPosition) ?? [])
     const spawned = new Set(activeStep?.spawnedPositions.map(hashPosition) ?? [])
 
-    return { selected, cleared, moved, spawned }
-  }, [activeStep, game.selectedPath])
+    return { selected, invalid, cleared, moved, spawned }
+  }, [activeStep, game.selectedPath, invalidPath])
+
+  useEffect(() => {
+    return () => {
+      if (invalidResetTimeoutRef.current !== null) {
+        window.clearTimeout(invalidResetTimeoutRef.current)
+      }
+    }
+  }, [])
 
   function resetGame() {
     const nextGame = createGame()
     dragPathRef.current = []
     isDraggingRef.current = false
+    if (invalidResetTimeoutRef.current !== null) {
+      window.clearTimeout(invalidResetTimeoutRef.current)
+      invalidResetTimeoutRef.current = null
+    }
+    setInvalidPath([])
     setGame(nextGame)
     setPendingTurn(null)
     setStepIndex(-1)
     setStatusMessage('Fresh board. Drag to trace your first word.')
   }
 
+  function handleShuffle() {
+    if (inputLocked) {
+      return
+    }
+
+    const nextGame = shuffleGame(game)
+    dragPathRef.current = []
+    isDraggingRef.current = false
+    setInvalidPath([])
+    setPendingTurn(null)
+    setStepIndex(-1)
+    setGame(nextGame)
+    setStatusMessage(`Board shuffled for -${SHUFFLE_PENALTY}.`)
+  }
+
   function setSelectedPath(path: Position[]) {
     dragPathRef.current = path
     setGame((current) => ({ ...current, selectedPath: path }))
+  }
+
+  function flashInvalidPath(path: Position[]) {
+    if (invalidResetTimeoutRef.current !== null) {
+      window.clearTimeout(invalidResetTimeoutRef.current)
+    }
+
+    setInvalidPath(path)
+    invalidResetTimeoutRef.current = window.setTimeout(() => {
+      setInvalidPath([])
+      invalidResetTimeoutRef.current = null
+    }, INVALID_FLASH_MS)
   }
 
   function startSelection(position: Position) {
@@ -199,6 +243,7 @@ export function LexplosionApp({
     const turn = submitSelection(game, selection)
     if (!turn.valid) {
       setSelectedPath([])
+      flashInvalidPath(selection)
       setStatusMessage(
         turn.reason === 'too-short'
           ? 'Need at least 3 letters.'
@@ -287,9 +332,14 @@ export function LexplosionApp({
       <section className="app">
         <header className="app__header">
           <h1>Letterquake</h1>
-          <button className="app__reset" onClick={resetGame} type="button">
-            Restart run
-          </button>
+          <div className="app__actions">
+            <button className="app__action" onClick={handleShuffle} type="button">
+              Shuffle -{SHUFFLE_PENALTY}
+            </button>
+            <button className="app__reset" onClick={resetGame} type="button">
+              Restart run
+            </button>
+          </div>
         </header>
 
         <section className="status-bar" aria-label="game stats">
@@ -329,6 +379,7 @@ export function LexplosionApp({
                 const stateClasses = [
                   'tile',
                   highlightedPositions.selected.has(positionKey) ? 'tile--selected' : '',
+                  highlightedPositions.invalid.has(positionKey) ? 'tile--invalid' : '',
                   highlightedPositions.cleared.has(positionKey) ? 'tile--clearing' : '',
                   highlightedPositions.moved.has(positionKey) ? 'tile--falling' : '',
                   highlightedPositions.spawned.has(positionKey) ? 'tile--spawning' : '',

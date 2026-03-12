@@ -1,28 +1,31 @@
 import type { TurnPhase } from './types'
 
 export const BOARD_SIZE = 6
+export const SHUFFLE_PENALTY = 75
+export const TARGET_EASY_WORDS = 3
+export const REFILL_EASY_WORDS = 1
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [
-  ['A', 8],
+  ['A', 10],
   ['B', 2],
   ['C', 3],
   ['D', 4],
-  ['E', 12],
+  ['E', 14],
   ['F', 2],
   ['G', 3],
   ['H', 2],
-  ['I', 7],
+  ['I', 8],
   ['J', 1],
   ['K', 1],
   ['L', 4],
   ['M', 3],
   ['N', 7],
-  ['O', 7],
+  ['O', 8],
   ['P', 2],
   ['Q', 1],
   ['R', 6],
   ['S', 6],
-  ['T', 9],
+  ['T', 10],
   ['U', 3],
   ['V', 1],
   ['W', 2],
@@ -31,16 +34,72 @@ export const LETTER_WEIGHTS: Array<[string, number]> = [
   ['Z', 1],
 ]
 
+export const EASY_WORDS = [
+  'CAT',
+  'DOG',
+  'SUN',
+  'STAR',
+  'TREE',
+  'RING',
+  'BOOK',
+  'FIRE',
+  'WATER',
+  'STONE',
+  'PLAY',
+  'GAME',
+  'HOME',
+  'MAKE',
+  'TIME',
+  'ROAD',
+  'WIND',
+  'LINE',
+  'LIGHT',
+  'HAND',
+  'WORD',
+  'TILE',
+  'NOTE',
+  'TEAM',
+  'TAKE',
+  'TURN',
+  'RATE',
+  'SAND',
+  'SHIP',
+  'FISH',
+  'BIRD',
+  'SEAT',
+  'READ',
+  'DIE',
+  'TIE',
+  'PIE',
+  'CODE',
+  'DATA',
+  'MINT',
+  'GLOW',
+] as const
+
+export const CLUSTER_FOLLOWS: Record<string, string[]> = {
+  A: ['N', 'R', 'T', 'L', 'S'],
+  C: ['H', 'L', 'R', 'A', 'O'],
+  E: ['R', 'N', 'S', 'D', 'A'],
+  H: ['E', 'I', 'A', 'O'],
+  I: ['N', 'T', 'S', 'C'],
+  O: ['N', 'R', 'U', 'O'],
+  R: ['E', 'A', 'I', 'O'],
+  S: ['T', 'H', 'E', 'A'],
+  T: ['H', 'R', 'E', 'O', 'A'],
+  W: ['A', 'E', 'I', 'O'],
+}
+
 export const STEP_DURATIONS: Record<TurnPhase, number> = {
   clear: 420,
   'pause-clear': 180,
-  gravity: 280,
+  gravity: 440,
   'pause-refill': 160,
   refill: 240,
 }
 
 export const FALLBACK_BOARD_ROWS = [
-  'CAXQZX',
+  'CATDOG',
   'RLMNVB',
   'SPTUWE',
   'ODGHIK',

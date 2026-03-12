@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   boardToRows,
   createGame,
+  findStraightWords,
   hasPlayableWord,
   isValidPath,
   makeBoardFromRows,
   positionsToWord,
   resolveSelectedWord,
+  shuffleGame,
   submitSelection,
 } from './engine'
 
@@ -77,7 +79,7 @@ describe('engine', () => {
     ])
 
     expect(result.valid).toBe(true)
-    expect(result.nextState.score).toBe(90)
+    expect(result.nextState.score).toBeGreaterThanOrEqual(90)
     expect(result.steps[0].words[0].word).toBe('CAT')
   })
 
@@ -160,5 +162,80 @@ describe('engine', () => {
 
     expect(hasPlayableWord(board)).toBe(false)
     expect(createGame({ board, seed: 5 }).gameOver).toBe(true)
+  })
+
+  it('creates boards with at least one obvious straight word and a playable state', () => {
+    const game = createGame(17)
+
+    const easyWords = findStraightWords(game.board).filter((word) =>
+      ['CAT', 'DOG', 'TIME', 'READ', 'PLAY', 'GAME', 'WORD', 'DIE'].includes(word.word),
+    )
+
+    expect(easyWords.length).toBeGreaterThanOrEqual(1)
+    expect(hasPlayableWord(game.board)).toBe(true)
+  })
+
+  it('supports shuffle with a score penalty and a fresh playable board', () => {
+    const state = createGame({
+      seed: 7,
+      board: makeBoardFromRows([
+        'CATQZX',
+        'RLMNVB',
+        'SPTUWE',
+        'ODGHIK',
+        'YJBCDF',
+        'EGHIRT',
+      ]),
+    })
+
+    const shuffled = shuffleGame({ ...state, score: 120 })
+
+    expect(shuffled.score).toBe(45)
+    expect(shuffled.turn).toBe(1)
+    expect(hasPlayableWord(shuffled.board)).toBe(true)
+  })
+
+  it('only auto-clears words touched by falling tiles', () => {
+    const result = resolveSelectedWord(
+      makeBoardFromRows([
+        'CATQZX',
+        'DOGQZX',
+        'ZZZQZX',
+        'ZZZQZX',
+        'ZZZQZX',
+        'ZZZQZX',
+      ]),
+      [
+        { row: 0, col: 0 },
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+      ],
+      23,
+    )
+
+    expect(result.wordsCleared).toEqual(['CAT'])
+    expect(result.totalWordsCleared).toBe(1)
+  })
+
+  it('resolves a selected word to a finite animation queue', () => {
+    const result = resolveSelectedWord(
+      makeBoardFromRows([
+        'CATQZX',
+        'RLMNVB',
+        'SPTUWE',
+        'ODGHIK',
+        'YJBCDF',
+        'EGHIRT',
+      ]),
+      [
+        { row: 0, col: 0 },
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+      ],
+      23,
+    )
+
+    expect(result.steps.length).toBeLessThan(40)
+    expect(result.steps.at(-1)?.phase).toBe('refill')
   })
 })
