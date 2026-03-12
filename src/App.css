@@ -1,0 +1,261 @@
+.shell {
+  min-height: 100vh;
+  padding: 1rem;
+  color: var(--ink);
+  background: #000;
+}
+
+.app {
+  width: min(100%, 26rem);
+  margin: 0 auto;
+}
+
+.app__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.app__header h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.app__reset {
+  border: 1px solid #3a3a3c;
+  border-radius: 0.5rem;
+  background: #121213;
+  color: var(--ink);
+  padding: 0.45rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.status-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.8rem;
+}
+
+.status-pill {
+  border: 1px solid #3a3a3c;
+  border-radius: 0.65rem;
+  background: #121213;
+  padding: 0.55rem 0.45rem;
+  text-align: center;
+}
+
+.status-pill span,
+.board-panel__label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.status-pill strong {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 1rem;
+}
+
+.board-panel {
+  border: 1px solid #3a3a3c;
+  border-radius: 0.9rem;
+  background: #121213;
+  padding: 0.8rem;
+}
+
+.board-panel__header,
+.board-panel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.board-panel__status {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: var(--ink-muted);
+}
+
+.combo-badge {
+  flex: none;
+  border: 1px solid #3a3a3c;
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: #1f1f20;
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.combo-badge[data-phase='clear'] {
+  border-color: #565758;
+}
+
+.combo-badge[data-phase='gravity'] {
+  border-color: #6a6b6d;
+}
+
+.combo-badge[data-phase='refill'] {
+  border-color: #818384;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.35rem;
+  aspect-ratio: 1;
+  margin: 0.8rem 0;
+  padding: 0;
+  background: transparent;
+  touch-action: none;
+}
+
+.board--locked {
+  pointer-events: none;
+}
+
+.board--shake {
+  animation: board-shake 250ms ease;
+}
+
+.board--aftershock {
+  transform: scale(0.985);
+}
+
+.board--settled {
+  opacity: 0.94;
+}
+
+.tile {
+  position: relative;
+  border: 2px solid #3a3a3c;
+  border-radius: 0.45rem;
+  background: #121213;
+  box-shadow: none;
+  color: var(--ink);
+  aspect-ratio: 1;
+  min-height: 2.65rem;
+  padding: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1rem, 4vw, 1.6rem);
+  font-weight: 800;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+  touch-action: none;
+  user-select: none;
+}
+
+.tile span {
+  display: inline-block;
+  transform: translateY(0.02em);
+}
+
+.tile:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.tile--selected {
+  border-color: #f8f8f8;
+  transform: scale(1.02);
+}
+
+.tile--clearing {
+  animation: tile-pop 420ms ease forwards;
+  background: #4a4a4d;
+  border-color: #8a8a8d;
+}
+
+.tile--falling {
+  animation: tile-drop 260ms ease;
+}
+
+.tile--spawning {
+  animation: tile-spawn 220ms ease;
+  border-color: #565758;
+}
+
+.board-panel__footer {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.board-panel__words,
+.board-panel__seed {
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+}
+
+.board-panel__seed {
+  font-size: 0.95rem;
+}
+
+@media (min-width: 640px) {
+  .shell {
+    padding: 1.5rem;
+  }
+}
+
+@keyframes tile-pop {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  20% {
+    transform: scale(1.12) rotate(-2deg);
+  }
+  55% {
+    transform: scale(1.18) rotate(3deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.28) rotate(-14deg);
+    opacity: 0;
+  }
+}
+
+@keyframes tile-drop {
+  0% {
+    transform: translateY(-12px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes tile-spawn {
+  0% {
+    transform: translateY(-18px) scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes board-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(-4px);
+  }
+  60% {
+    transform: translateX(4px);
+  }
+}
