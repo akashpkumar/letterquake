@@ -50,8 +50,41 @@ interface LexplosionAppProps {
 
 const TILE_SNAP_RATIO = 0.34
 
-function formatCombo(combo: number): string {
-  return combo > 1 ? `${combo}x cascade` : combo === 1 ? 'Word hit' : 'Ready'
+function HelpIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M12 17.2a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3Zm.02-12.7c-3.08 0-5.12 1.64-5.28 4.36h2.26c.12-1.35 1.15-2.18 2.82-2.18 1.56 0 2.59.75 2.59 1.96 0 .92-.46 1.46-1.9 2.26-1.82 1.01-2.44 1.98-2.39 3.96v.33h2.2v-.25c0-1.26.33-1.79 1.69-2.57 1.62-.92 2.62-1.86 2.62-3.77 0-2.47-1.96-4.1-4.61-4.1Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+function ShuffleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M16.8 4h2.7v2.7M7 7h2.5c1.1 0 2.1.53 2.73 1.42l3.54 5.16A3.34 3.34 0 0 0 18.57 15H20m-.5 5v-2.7h-2.7M4 7h1.55c1.08 0 2.1.52 2.73 1.4L9.8 10.6m4.4 2.8 1.52 2.2A3.34 3.34 0 0 0 18.45 17H20M4 17h1.55c1.08 0 2.1-.52 2.73-1.4L9.8 13.4"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+function RestartIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M7.3 6.4V3.5L3.5 7.3l3.8 3.8V8.2h6.05a5.15 5.15 0 1 1-4.62 7.43l-2 .9A7.35 7.35 0 1 0 13.35 6.4H7.3Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
 }
 
 function hashPosition(position: Position): string {
@@ -182,6 +215,7 @@ export function LexplosionApp({
   )
   const [stepIndex, setStepIndex] = useState(initialState.stepIndex)
   const [statusMessage, setStatusMessage] = useState(initialState.statusMessage)
+  const [helpOpen, setHelpOpen] = useState(false)
   const dragPathRef = useRef<Position[]>([])
   const isDraggingRef = useRef(false)
   const activePointerIdRef = useRef<number | null>(null)
@@ -732,47 +766,101 @@ export function LexplosionApp({
         <header className="app__header">
           <h1>Letterquake</h1>
           <div className="app__actions">
-            <button className="app__action" onClick={handleShuffle} type="button">
-              Shuffle -{SHUFFLE_PENALTY}
+            <button
+              aria-label={`Shuffle board for -${SHUFFLE_PENALTY}`}
+              className="app__icon-button"
+              onClick={handleShuffle}
+              type="button"
+            >
+              <ShuffleIcon />
             </button>
-            <button className="app__reset" onClick={resetGame} type="button">
-              Restart run
+            <button
+              aria-label="Open help"
+              className="app__icon-button"
+              onClick={() => setHelpOpen(true)}
+              type="button"
+            >
+              <HelpIcon />
+            </button>
+            <button
+              aria-label="Restart run"
+              className="app__icon-button"
+              onClick={resetGame}
+              type="button"
+            >
+              <RestartIcon />
             </button>
           </div>
         </header>
 
-        <section className="status-bar" aria-label="game stats">
-          <div className="status-pill">
-            <span>Score</span>
+        <section className="status-strip" aria-label="game stats">
+          <div className="status-strip__group">
+            <span className="status-strip__label">Score</span>
             <strong
               className={
                 visibleClearStep
-                  ? 'status-pill__value--pulse status-pill__value--hit'
-                  : ''
+                  ? 'status-strip__value status-strip__value--pulse status-strip__value--hit'
+                  : 'status-strip__value'
               }
             >
               {game.score}
             </strong>
+            <span
+              className={
+                game.lastScoreDelta !== 0
+                  ? 'status-strip__delta status-strip__delta--active'
+                  : 'status-strip__delta'
+              }
+            >
+              {game.lastScoreDelta > 0
+                ? `+${game.lastScoreDelta}`
+                : game.lastScoreDelta < 0
+                  ? `${game.lastScoreDelta}`
+                  : '+0'}
+            </span>
           </div>
-          <div className="status-pill status-pill--compact">
-            <span>Turn</span>
-            <strong>{game.turn}</strong>
-          </div>
-          <div className="status-pill status-pill--compact">
-            <span>Cleared</span>
-            <strong>{game.totalWordsCleared}</strong>
+          <div className="status-strip__divider" />
+          <div className="status-strip__group status-strip__group--compact">
+            <span className="status-strip__label">Cleared</span>
+            <strong className="status-strip__value">{game.totalWordsCleared}</strong>
           </div>
         </section>
 
+        {helpOpen ? (
+          <div
+            aria-modal="true"
+            className="help-overlay"
+            role="dialog"
+            onClick={() => setHelpOpen(false)}
+          >
+            <section className="help-card" onClick={(event) => event.stopPropagation()}>
+              <div className="help-card__header">
+                <h2>How To Play</h2>
+                <button
+                  aria-label="Close help"
+                  className="help-card__close"
+                  onClick={() => setHelpOpen(false)}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              <ul className="help-card__list">
+                <li>Drag through adjacent letters to spell a word.</li>
+                <li>Valid words explode and score points.</li>
+                <li>Blocks above fall down and new ones refill from the top.</li>
+                <li>Gravity can trigger bonus cascade clears automatically.</li>
+                <li>Shuffle rescues a bad board for {SHUFFLE_PENALTY} points.</li>
+              </ul>
+            </section>
+          </div>
+        ) : null}
+
         <section className="board-panel">
-          <div className="board-panel__header">
-            <p className="board-panel__status">{runtimeStatusMessage}</p>
-            <div
-              className={`combo-badge${isAutoClearVisible ? ' combo-badge--auto' : ''}${visibleClearStep ? ' combo-badge--pulse' : ''}`}
-              data-phase={activeStep?.phase ?? 'idle'}
-            >
-              {activeStep ? formatCombo(activeStep.combo) : formatCombo(game.combo)}
-            </div>
+          <div
+            className={`event-banner${activeStep ? ` event-banner--${activeStep.phase}` : ''}${isAutoClearVisible ? ' event-banner--auto' : ''}${visibleClearStep ? ' event-banner--pulse' : ''}`}
+          >
+            <p className="event-banner__text">{runtimeStatusMessage}</p>
           </div>
 
           <div
@@ -875,20 +963,26 @@ export function LexplosionApp({
                 const stateClasses = [
                   'tile',
                   !tile ? 'tile--empty' : '',
-                  highlightedPositions.selected.has(positionKey) ? 'tile--selected' : '',
-                  highlightedPositions.invalid.has(positionKey) ? 'tile--invalid' : '',
-                  highlightedPositions.cleared.has(positionKey) ? 'tile--clearing' : '',
-                  highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
-                    ? 'tile--clearing-auto'
-                    : '',
                 ]
                   .filter(Boolean)
                   .join(' ')
-                const glyphClasses = [
-                  'tile__content',
-                  highlightedPositions.moved.has(positionKey) ? 'tile__glyph--falling' : '',
+                const blockClasses = [
+                  'tile__block',
+                  highlightedPositions.selected.has(positionKey)
+                    ? 'tile__block--selected'
+                    : '',
+                  highlightedPositions.invalid.has(positionKey)
+                    ? 'tile__block--invalid'
+                    : '',
+                  highlightedPositions.cleared.has(positionKey)
+                    ? 'tile__block--clearing'
+                    : '',
+                  highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
+                    ? 'tile__block--clearing-auto'
+                    : '',
+                  highlightedPositions.moved.has(positionKey) ? 'tile__block--falling' : '',
                   highlightedPositions.spawned.has(positionKey)
-                    ? 'tile__glyph--spawning'
+                    ? 'tile__block--spawning'
                     : '',
                 ]
                   .filter(Boolean)
@@ -924,24 +1018,22 @@ export function LexplosionApp({
                     style={tileStyle}
                     type="button"
                   >
-                    {highlightedPositions.selected.has(positionKey) ? (
-                      <span className="tile__order">{selectedOrderMap.get(positionKey)}</span>
+                    {tile ? (
+                      <span className={blockClasses} style={tileStyle}>
+                        {highlightedPositions.selected.has(positionKey) ? (
+                          <span className="tile__order">
+                            {selectedOrderMap.get(positionKey)}
+                          </span>
+                        ) : null}
+                        <span className="tile__glyph">{tile.letter}</span>
+                      </span>
                     ) : null}
-                    <span className={glyphClasses}>
-                      <span className="tile__glyph">{tile?.letter ?? ''}</span>
-                    </span>
                   </button>
                 )
               }),
             )}
           </div>
 
-          <div className="board-panel__footer">
-            <div>
-              <p className="board-panel__label">Last score</p>
-              <p className="board-panel__seed">{game.lastScoreDelta}</p>
-            </div>
-          </div>
         </section>
       </section>
     </main>

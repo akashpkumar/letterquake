@@ -236,7 +236,7 @@ describe('LexplosionApp', () => {
     }
 
     expect(screen.getByText(/Auto-cleared|Auto-clearing/i)).toBeInTheDocument()
-    expect(document.querySelector('.combo-badge--auto')).not.toBeNull()
+    expect(document.querySelector('.event-banner--auto')).not.toBeNull()
     vi.useRealTimers()
   })
 
@@ -266,7 +266,7 @@ describe('LexplosionApp', () => {
       'EGHIRT',
     ])
 
-    fireEvent.click(screen.getByRole('button', { name: /Shuffle -75/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
 
     expect(screen.getByText('Board shuffled for -75.')).toBeInTheDocument()
   })
