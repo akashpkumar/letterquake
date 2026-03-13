@@ -40,6 +40,7 @@ import type {
   FoundWord,
   GameState,
   Position,
+  Tile,
   TurnPhase,
   TurnResult,
   TurnStep,
@@ -129,6 +130,34 @@ function createEmptyBoard(size: number) {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, () => null as GameState['board'][number][number]),
   )
+}
+
+function renderTileIdentity(tile: Tile) {
+  if (tile.kind === 'gold') {
+    return <span aria-hidden="true" className="tile__identity tile__identity--gold" />
+  }
+
+  if (tile.kind === 'cracked') {
+    const durability = tile.state?.durability ?? 2
+    return (
+      <span
+        aria-hidden="true"
+        className={`tile__identity tile__identity--cracked tile__identity--cracked-${durability}`}
+      />
+    )
+  }
+
+  if (tile.kind === 'anchor') {
+    return (
+      <>
+        <span aria-hidden="true" className="tile__identity tile__identity--anchor">
+          <span className="tile__badge tile__badge--anchor" />
+        </span>
+      </>
+    )
+  }
+
+  return null
 }
 
 function buildIntroTurn(nextGame: GameState): TurnResult {
@@ -1135,13 +1164,7 @@ export function LexplosionApp({
                             {selectedOrderMap.get(positionKey)}
                           </span>
                         ) : null}
-                        {tile.kind !== 'normal' ? (
-                          <span className="tile__accent">
-                            {tile.kind === 'cracked'
-                              ? tile.state?.durability ?? 2
-                              : getTileDefinition(tile.kind).accentLabel}
-                          </span>
-                        ) : null}
+                        {renderTileIdentity(tile)}
                         <span className="tile__glyph">{tile.letter}</span>
                       </span>
                     ) : null}
