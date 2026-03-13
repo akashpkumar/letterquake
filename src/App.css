@@ -431,8 +431,11 @@
       calc(var(--fall-distance-rows, 1) * (-100% - var(--board-gap)))
     );
   }
-  82% {
+  78% {
     transform: translateY(var(--fall-land-bounce));
+  }
+  90% {
+    transform: translateY(calc(var(--fall-land-bounce) * -0.35));
   }
   100% {
     transform: translateY(0);
@@ -472,9 +475,13 @@
   38% {
     opacity: 0.72;
   }
-  72% {
+  70% {
     opacity: 1;
-    transform: translateY(calc(var(--fall-land-bounce) * 0.45));
+    transform: translateY(calc(var(--fall-land-bounce) * 0.7));
+  }
+  88% {
+    opacity: 1;
+    transform: translateY(calc(var(--fall-land-bounce) * -0.25));
   }
   100% {
     opacity: 1;
