@@ -1,7 +1,6 @@
 import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
-  startTransition,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -272,7 +271,11 @@ export function LexplosionApp({
     pendingTurn && stepIndex >= 0 && stepIndex < pendingTurn.steps.length
       ? pendingTurn.steps[stepIndex]
       : null
-  const displayBoard = activeStep?.board ?? game.board
+  const displayBoard =
+    activeStep?.board ??
+    (pendingTurn && stepIndex >= pendingTurn.steps.length
+      ? pendingTurn.nextState.board
+      : game.board)
   const previousStep = useMemo(
     () =>
       pendingTurn && stepIndex > 0 && stepIndex - 1 < pendingTurn.steps.length
@@ -335,16 +338,14 @@ export function LexplosionApp({
     : statusMessage
 
   const finishTurn = useEffectEvent((turn: TurnResult) => {
-    startTransition(() => {
-      setGame(turn.nextState)
-      setPendingTurn(null)
-      setStepIndex(-1)
-      setStatusMessage(
-        turn.nextState.gameOver
-          ? 'Board exhausted. No valid words remain.'
-          : `Cleared ${turn.nextState.lastWords[0]} for +${turn.nextState.lastScoreDelta}.`,
-      )
-    })
+    setGame(turn.nextState)
+    setPendingTurn(null)
+    setStepIndex(-1)
+    setStatusMessage(
+      turn.nextState.gameOver
+        ? 'Board exhausted. No valid words remain.'
+        : `Cleared ${turn.nextState.lastWords[0]} for +${turn.nextState.lastScoreDelta}.`,
+    )
   })
 
   const highlightedPositions = useMemo(() => {
