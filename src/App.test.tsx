@@ -13,10 +13,6 @@ function renderApp(boardRows: string[]) {
   )
 }
 
-function getWordPreview(): string | null {
-  return document.querySelector('.board-panel__words')?.textContent ?? null
-}
-
 function installBoardGeometry() {
   const tileSize = 40
   const gap = 4
@@ -93,7 +89,8 @@ describe('LexplosionApp', () => {
       vi.advanceTimersByTime(1)
     })
 
-    expect(screen.getByText('Boom.')).toBeInTheDocument()
+    expect(screen.getByText(/^Clear(?:ed|ing) CAT$/)).toBeInTheDocument()
+    expect(screen.getAllByTestId('overlay-event')).toHaveLength(2)
     vi.useRealTimers()
   })
 
@@ -159,10 +156,10 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(getWordPreview()).toBe('C')
+    expect(screen.queryAllByTestId('overlay-active')).toHaveLength(0)
   })
 
-  it('shows live word state while dragging', () => {
+  it('draws path arrows while dragging', () => {
     renderApp([
       'CATQZX',
       'RLMNVB',
@@ -185,8 +182,7 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(screen.getByText('Building')).toBeInTheDocument()
-    expect(screen.getAllByText('CA')).toHaveLength(2)
+    expect(screen.getAllByTestId('overlay-active')).toHaveLength(1)
 
     fireEvent.pointerMove(screen.getByTestId('board'), {
       pointerId: 1,
@@ -194,10 +190,7 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(document.querySelector('.word-banner--word .word-banner__label')?.textContent).toBe(
-      'Ready',
-    )
-    expect(screen.getAllByText('CAT')).toHaveLength(2)
+    expect(screen.getAllByTestId('overlay-active')).toHaveLength(2)
   })
 
   it('renders score, cleared count, and game-over state', () => {

@@ -9,14 +9,9 @@ import {
 } from 'react'
 import './App.css'
 import { SHUFFLE_PENALTY, STEP_DURATIONS } from './game/constants'
-import {
-  classifyWordProgress,
-  createGame,
-  positionsToWord,
-  shuffleGame,
-  submitSelection,
-} from './game/engine'
+import { createGame, shuffleGame, submitSelection } from './game/engine'
 import type {
+  FoundWord,
   GameState,
   Position,
   TurnPhase,
@@ -31,6 +26,7 @@ interface LexplosionAppProps {
 
 const TILE_SNAP_RATIO = 0.34
 const INVALID_FLASH_MS = 360
+const CONNECTOR_OFFSET = 0.32
 
 function formatCombo(combo: number): string {
   return combo > 1 ? `${combo}x cascade` : combo === 1 ? 'Word hit' : 'Ready'
@@ -38,6 +34,22 @@ function formatCombo(combo: number): string {
 
 function hashPosition(position: Position): string {
   return `${position.row}:${position.col}`
+}
+
+function formatWords(words: string[]): string {
+  return words.join(' · ')
+}
+
+interface OverlaySegment {
+  key: string
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  midX: number
+  midY: number
+  angle: number
+  variant: 'active' | 'invalid' | 'event'
 }
 
 export function LexplosionApp({
@@ -69,6 +81,46 @@ export function LexplosionApp({
       ? pendingTurn.steps[stepIndex]
       : null
   const displayBoard = activeStep?.board ?? game.board
+  const previousStep = useMemo(
+    () =>
+      pendingTurn && stepIndex > 0 && stepIndex - 1 < pendingTurn.steps.length
+        ? pendingTurn.steps[stepIndex - 1]
+        : null,
+    [pendingTurn, stepIndex],
+  )
+
+  const displayedClearWordDetails = useMemo<FoundWord[]>(() => {
+    if (activeStep?.phase === 'clear') {
+      return activeStep.words
+    }
+
+    if (activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear') {
+      return previousStep.words
+    }
+
+    return []
+  }, [activeStep, previousStep])
+
+  const displayedClearWords = useMemo(
+    () => displayedClearWordDetails.map((word) => word.word),
+    [displayedClearWordDetails],
+  )
+
+  const runtimeStatusMessage = activeStep
+    ? activeStep.phase === 'clear'
+      ? `${activeStep.combo > 1 ? 'Auto-clearing' : 'Clearing'} ${formatWords(
+          activeStep.words.map((word) => word.word),
+        )}`
+      : activeStep.phase === 'pause-clear' && displayedClearWords.length > 0
+        ? `${activeStep.combo > 1 ? 'Auto-cleared' : 'Cleared'} ${formatWords(
+            displayedClearWords,
+          )}`
+        : activeStep.phase === 'gravity'
+          ? 'Letters falling into place.'
+          : activeStep.phase === 'pause-refill'
+            ? 'Board settling.'
+            : 'New letters flowing in.'
+    : statusMessage
 
   const finishTurn = useEffectEvent((turn: TurnResult) => {
     startTransition(() => {
@@ -110,37 +162,6 @@ export function LexplosionApp({
     .filter(Boolean)
     .join(' ')
 
-  const movePreview = useMemo(() => {
-    const path = game.selectedPath
-    if (path.length > 0) {
-      return positionsToWord(game.board, path)
-    }
-
-    if (activeStep?.words[0]) {
-      return activeStep.words[0].word
-    }
-
-    if (game.lastWords.length > 0) {
-      return game.lastWords[0]
-    }
-
-    return 'Trace a connected word.'
-  }, [activeStep, game.board, game.lastWords, game.selectedPath])
-
-  const liveWordState = useMemo(
-    () => classifyWordProgress(game.selectedPath.length > 0 ? movePreview : ''),
-    [game.selectedPath.length, movePreview],
-  )
-
-  const liveWordLabel =
-    game.selectedPath.length === 0
-      ? 'Word'
-      : liveWordState === 'word'
-        ? 'Ready'
-        : liveWordState === 'dead'
-          ? 'Dead end'
-          : 'Building'
-
   const highlightedPositions = useMemo(() => {
     const selected = new Set(game.selectedPath.map(hashPosition))
     const invalid = new Set(invalidPath.map(hashPosition))
@@ -158,6 +179,64 @@ export function LexplosionApp({
       }
     }
   }, [])
+
+  const overlaySegments = useMemo(() => {
+    function buildSegments(positionsGroups: Position[][], variant: OverlaySegment['variant']) {
+      const rowCount = displayBoard.length
+      const colCount = displayBoard[0]?.length ?? 1
+      const segments: OverlaySegment[] = []
+
+      positionsGroups.forEach((positions, groupIndex) => {
+        for (let index = 0; index < positions.length - 1; index += 1) {
+          const from = positions[index]
+          const to = positions[index + 1]
+          const deltaCol = to.col - from.col
+          const deltaRow = to.row - from.row
+          const magnitude = Math.hypot(deltaCol, deltaRow) || 1
+          const unitX = deltaCol / magnitude
+          const unitY = deltaRow / magnitude
+          const offsetX = (unitX * CONNECTOR_OFFSET * 100) / colCount
+          const offsetY = (unitY * CONNECTOR_OFFSET * 100) / rowCount
+          const fromCenterX = ((from.col + 0.5) / colCount) * 100
+          const fromCenterY = ((from.row + 0.5) / rowCount) * 100
+          const toCenterX = ((to.col + 0.5) / colCount) * 100
+          const toCenterY = ((to.row + 0.5) / rowCount) * 100
+          const x1 = fromCenterX + offsetX
+          const y1 = fromCenterY + offsetY
+          const x2 = toCenterX - offsetX
+          const y2 = toCenterY - offsetY
+
+          segments.push({
+            key: `${variant}-${groupIndex}-${index}`,
+            x1,
+            y1,
+            x2,
+            y2,
+            midX: (x1 + x2) / 2,
+            midY: (y1 + y2) / 2,
+            angle: (Math.atan2(deltaRow, deltaCol) * 180) / Math.PI,
+            variant,
+          })
+        }
+      })
+
+      return segments
+    }
+
+    if (game.selectedPath.length > 1) {
+      return buildSegments([game.selectedPath], 'active')
+    }
+
+    if (invalidPath.length > 1) {
+      return buildSegments([invalidPath], 'invalid')
+    }
+
+    const clearGroups = displayedClearWordDetails
+      .filter((word) => word.positions.length > 1)
+      .map((word) => word.positions)
+
+    return clearGroups.length > 0 ? buildSegments(clearGroups, 'event') : []
+  }, [displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
 
   function resetGame() {
     const nextGame = createGame()
@@ -379,25 +458,10 @@ export function LexplosionApp({
 
         <section className="board-panel">
           <div className="board-panel__header">
-            <p className="board-panel__status">{statusMessage}</p>
+            <p className="board-panel__status">{runtimeStatusMessage}</p>
             <div className="combo-badge" data-phase={activeStep?.phase ?? 'idle'}>
               {activeStep ? formatCombo(activeStep.combo) : formatCombo(game.combo)}
             </div>
-          </div>
-
-          <div
-            aria-live="polite"
-            className={[
-              'word-banner',
-              game.selectedPath.length > 0 ? 'word-banner--active' : '',
-              liveWordState === 'word' ? 'word-banner--word' : '',
-              liveWordState === 'dead' ? 'word-banner--dead' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <span className="word-banner__label">{liveWordLabel}</span>
-            <strong className="word-banner__value">{movePreview}</strong>
           </div>
 
           <div
@@ -407,6 +471,49 @@ export function LexplosionApp({
             onPointerMove={handleBoardPointerMove}
             ref={boardRef}
           >
+            <svg
+              aria-hidden="true"
+              className="board__overlay"
+              data-testid="board-overlay"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <defs>
+              </defs>
+              {overlaySegments.map((segment) => {
+                const arrowPath = 'M -1.3 -0.9 L 0 0 L -1.3 0.9'
+
+                return (
+                  <g key={segment.key}>
+                    <line
+                      className="board__segment-outline"
+                      x1={segment.x1}
+                      x2={segment.x2}
+                      y1={segment.y1}
+                      y2={segment.y2}
+                    />
+                    <line
+                      className={`board__segment board__segment--${segment.variant}`}
+                      data-testid={`overlay-${segment.variant}`}
+                      x1={segment.x1}
+                      x2={segment.x2}
+                      y1={segment.y1}
+                      y2={segment.y2}
+                    />
+                    <path
+                      className="board__arrow-outline"
+                      d={arrowPath}
+                      transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
+                    />
+                    <path
+                      className={`board__arrow board__arrow--${segment.variant}`}
+                      d={arrowPath}
+                      transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
+                    />
+                  </g>
+                )
+              })}
+            </svg>
             {displayBoard.map((row, rowIndex) =>
               row.map((tile, colIndex) => {
                 const position = { row: rowIndex, col: colIndex }
@@ -442,10 +549,6 @@ export function LexplosionApp({
           </div>
 
           <div className="board-panel__footer">
-            <div>
-              <p className="board-panel__label">Word</p>
-              <p className="board-panel__words">{game.selectedPath.length > 0 ? movePreview : 'Trace a connected word.'}</p>
-            </div>
             <div>
               <p className="board-panel__label">Last score</p>
               <p className="board-panel__seed">{game.lastScoreDelta}</p>
