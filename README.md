@@ -1,73 +1,101 @@
-# React + TypeScript + Vite
+# Letterquake
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Letterquake is a fast-paced React word puzzle where you drag across adjacent letters to form words, trigger clears, and watch the board collapse into chain reactions.
 
-Currently, two official plugins are available:
+## What It Is
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+The game is built around a 5x5 letter grid. Valid words clear tiles, gravity pulls the board downward, and refills can create bonus cascades automatically. The goal is to keep finding strong words while taking advantage of combos and special tiles.
 
-## React Compiler
+## How To Play
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. Drag across adjacent letters to build a word.
+2. Release to submit the selection.
+3. If the word is valid, the selected tiles clear.
+4. Tiles above fall into empty spaces.
+5. New tiles refill from the top.
+6. Any new horizontal or vertical words formed by gravity clear automatically as combo chains.
 
-## Expanding the ESLint configuration
+Rules:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Words must be at least 3 letters long.
+- Each tile can only be used once per selection.
+- Paths must stay connected through adjacent cells, including diagonals.
+- Invalid selections flash and reset without scoring.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Special Tiles
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- `Gold`: adds a score bonus when included in a valid word.
+- `Cracked`: needs two word hits before it fully breaks.
+- `Anchor`: blocks gravity and forces other tiles to fall around it.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Stack
+
+- React 19
+- TypeScript
+- Vite
+- Vitest
+
+## Development
+
+Install dependencies:
+
+```bash
+npm ci
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Start the dev server:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+Create a production build:
+
+```bash
+npm run build
+```
+
+Preview the production build locally:
+
+```bash
+npm run preview
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Run linting:
+
+```bash
+npm run lint
+```
+
+## Project Scripts
+
+- `npm run dev`: start Vite in development mode
+- `npm run build`: type-check and create a production build
+- `npm run preview`: serve the production build locally
+- `npm run test`: run the Vitest suite once
+- `npm run test:watch`: run tests in watch mode
+- `npm run lint`: run ESLint
+- `npm run generate:dictionary`: regenerate the dictionary data source
+
+## GitHub Pages Deployment
+
+This repo includes a GitHub Actions workflow at [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) that deploys the app to GitHub Pages on every push to `main`.
+
+The Vite config reads `VITE_BASE`, so the workflow can build the app with the correct repository subpath for Pages hosting.
+
+## Repo Structure
+
+- [`src/App.tsx`](src/App.tsx): main game UI and animation orchestration
+- [`src/game/engine.ts`](src/game/engine.ts): board generation, word resolution, gravity, and scoring
+- [`src/game/tileRegistry.ts`](src/game/tileRegistry.ts): special tile definitions and behavior
+- [`src/game/constants.ts`](src/game/constants.ts): gameplay and animation tuning constants
+
+## Status
+
+Letterquake is a small self-contained game project built for fast iteration on gameplay feel, scoring, and animation polish.

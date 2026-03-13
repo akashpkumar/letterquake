@@ -18,6 +18,16 @@ function installBoardGeometry() {
   const gap = 4
   const originalElementFromPoint =
     document.elementFromPoint?.bind(document) ?? (() => null)
+  const animationStub = () => ({ cancel: () => undefined })
+
+  Object.defineProperty(Element.prototype, 'animate', {
+    configurable: true,
+    value: () => animationStub(),
+  })
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  })
 
   const tiles = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-row][data-col]'))
   tiles.forEach((tile) => {
@@ -58,12 +68,11 @@ describe('LexplosionApp', () => {
     window.innerWidth = 390
 
     renderApp([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     installBoardGeometry()
@@ -100,12 +109,11 @@ describe('LexplosionApp', () => {
     vi.useFakeTimers()
 
     renderApp([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     installBoardGeometry()
@@ -137,12 +145,11 @@ describe('LexplosionApp', () => {
 
   it('ignores pointer movement that does not reach the center of the next tile', () => {
     renderApp([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     installBoardGeometry()
@@ -163,12 +170,11 @@ describe('LexplosionApp', () => {
 
   it('draws path arrows while dragging', () => {
     renderApp([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     installBoardGeometry()
@@ -202,12 +208,11 @@ describe('LexplosionApp', () => {
     vi.useFakeTimers()
 
     renderApp([
-      'ZZZQZX',
-      'ZZZQZX',
-      'DOGQZX',
-      'CATQZX',
-      'ZZZQZX',
-      'ZZZQZX',
+      'ZZZQZ',
+      'ZZZQZ',
+      'DOGQZ',
+      'CATQZ',
+      'ZZZQZ',
     ])
 
     installBoardGeometry()
@@ -242,12 +247,11 @@ describe('LexplosionApp', () => {
 
   it('renders score, cleared count, and game-over state', () => {
     renderApp([
-      'QZXQZX',
-      'ZXQZXQ',
-      'XQZXQZ',
-      'QZXQZX',
-      'ZXQZXQ',
-      'XQZXQZ',
+      'QZXQZ',
+      'ZXQZX',
+      'XQZXQ',
+      'QZXQZ',
+      'ZXQZX',
     ])
 
     expect(screen.getByText('Score')).toBeInTheDocument()
@@ -258,12 +262,11 @@ describe('LexplosionApp', () => {
 
   it('lets the player shuffle with a visible penalty', () => {
     renderApp([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
@@ -276,12 +279,11 @@ describe('LexplosionApp', () => {
       seed: 7,
       board: makeBoardFromRows(
         [
-          'CATQZX',
-          'RLMNVB',
-          'SPTUWE',
-          'ODGHIK',
-          'YJBCDF',
-          'EGHIRT',
+          'CATQZ',
+          'RLMNV',
+          'SPTUW',
+          'ODGHI',
+          'YJBCD',
         ],
         [
           { position: { row: 0, col: 0 }, kind: 'gold' },

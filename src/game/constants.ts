@@ -1,6 +1,6 @@
 import type { TurnPhase } from './types'
 
-export const BOARD_SIZE = 6
+export const BOARD_SIZE = 5
 export const SHUFFLE_PENALTY = 75
 export const TARGET_EASY_WORDS = 3
 export const REFILL_EASY_WORDS = 1
@@ -119,10 +119,9 @@ export const STEP_DURATIONS: Record<TurnPhase, number> = {
 }
 
 export const FALLBACK_BOARD_ROWS = [
-  'CATDOG',
-  'RLMNVB',
-  'SPTUWE',
-  'ODGHIK',
-  'YJBCDF',
-  'EGHIRT',
+  'CLOUD',
+  'RATES',
+  'STONE',
+  'PLAIN',
+  'GUIDE',
 ]

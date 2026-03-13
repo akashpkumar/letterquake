@@ -16,12 +16,11 @@ import {
 describe('engine', () => {
   it('builds a word from the selected positions', () => {
     const board = makeBoardFromRows([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     expect(
@@ -42,12 +41,11 @@ describe('engine', () => {
 
   it('validates adjacent non-repeating paths', () => {
     const board = makeBoardFromRows([
-      'CATQZX',
-      'RLMNVB',
-      'SPTUWE',
-      'ODGHIK',
-      'YJBCDF',
-      'EGHIRT',
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
     ])
 
     expect(
@@ -71,12 +69,11 @@ describe('engine', () => {
     const game = createGame({
       seed: 7,
       board: makeBoardFromRows([
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ]),
     })
 
@@ -94,12 +91,11 @@ describe('engine', () => {
   it('gravity compacts columns downward after a selected word is removed', () => {
     const result = resolveSelectedWord(
       makeBoardFromRows([
-        'XYZQZX',
-        'CATNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'XYZQZ',
+        'CATNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ]),
       [
         { row: 1, col: 0 },
@@ -115,12 +111,11 @@ describe('engine', () => {
   it('refill restores board dimensions after clearing a word', () => {
     const result = resolveSelectedWord(
       makeBoardFromRows([
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ]),
       [
         { row: 0, col: 0 },
@@ -130,20 +125,19 @@ describe('engine', () => {
       23,
     )
 
-    expect(result.board).toHaveLength(6)
-    expect(result.board.every((row) => row.length === 6)).toBe(true)
+    expect(result.board).toHaveLength(5)
+    expect(result.board.every((row) => row.length === 5)).toBe(true)
     expect(result.board.flat().every((tile) => tile !== null)).toBe(true)
   })
 
   it('adds bonus score when a gold tile is used', () => {
     const board = makeBoardFromRows(
       [
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ],
       [{ position: { row: 0, col: 1 }, kind: 'gold' }],
     )
@@ -164,12 +158,11 @@ describe('engine', () => {
   it('keeps cracked tiles on the board after the first hit and breaks them on the second', () => {
     const board = makeBoardFromRows(
       [
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ],
       [{ position: { row: 0, col: 1 }, kind: 'cracked' }],
     )
@@ -194,12 +187,11 @@ describe('engine', () => {
 
     const secondBoard = makeBoardFromRows(
       [
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ],
       [{ position: { row: 0, col: 1 }, kind: 'cracked' }],
     )
@@ -229,12 +221,11 @@ describe('engine', () => {
   it('keeps anchor tiles fixed while other letters fall around them', () => {
     const board = makeBoardFromRows(
       [
-        'A.....',
-        'B.....',
-        'CATQZX',
-        'D.....',
-        'E.....',
-        'F.....',
+        'A....',
+        'B....',
+        'CATQZ',
+        'D....',
+        'E....',
       ],
       [{ position: { row: 3, col: 0 }, kind: 'anchor' }],
     )
@@ -258,19 +249,18 @@ describe('engine', () => {
     const game = createGame({
       seed: 7,
       board: makeBoardFromRows([
-        'CATQZX',
-        'ZXQZXQ',
-        'XQZXQZ',
-        'QZXQZX',
-        'ZXQZXQ',
-        'XQZXQZ',
+        'CATQZ',
+        'ZXQZX',
+        'XQZXQ',
+        'QZXQZ',
+        'ZXQZX',
       ]),
     })
 
     const result = submitSelection(game, [
       { row: 0, col: 3 },
       { row: 0, col: 4 },
-      { row: 0, col: 5 },
+      { row: 1, col: 4 },
     ])
 
     expect(result.valid).toBe(false)
@@ -279,12 +269,11 @@ describe('engine', () => {
 
   it('detects when a board has no playable words', () => {
     const board = makeBoardFromRows([
-      'QZXQZX',
-      'ZXQZXQ',
-      'XQZXQZ',
-      'QZXQZX',
-      'ZXQZXQ',
-      'XQZXQZ',
+      'QZXQZ',
+      'ZXQZX',
+      'XQZXQ',
+      'QZXQZ',
+      'ZXQZX',
     ])
 
     expect(hasPlayableWord(board)).toBe(false)
@@ -310,12 +299,11 @@ describe('engine', () => {
     const state = createGame({
       seed: 7,
       board: makeBoardFromRows([
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ]),
     })
 
@@ -329,12 +317,11 @@ describe('engine', () => {
   it('only auto-clears words touched by falling tiles', () => {
     const result = resolveSelectedWord(
       makeBoardFromRows([
-        'CATQZX',
-        'DOGQZX',
-        'ZZZQZX',
-        'ZZZQZX',
-        'ZZZQZX',
-        'ZZZQZX',
+        'CATQZ',
+        'DOGQZ',
+        'ZZZQZ',
+        'ZZZQZ',
+        'ZZZQZ',
       ]),
       [
         { row: 0, col: 0 },
@@ -351,12 +338,11 @@ describe('engine', () => {
   it('resolves a selected word to a finite animation queue', () => {
     const result = resolveSelectedWord(
       makeBoardFromRows([
-        'CATQZX',
-        'RLMNVB',
-        'SPTUWE',
-        'ODGHIK',
-        'YJBCDF',
-        'EGHIRT',
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
       ]),
       [
         { row: 0, col: 0 },
