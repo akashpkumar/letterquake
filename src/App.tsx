@@ -50,6 +50,8 @@ interface LexplosionAppProps {
   stepDurations?: Partial<Record<TurnPhase, number>>
 }
 
+type ConfirmAction = 'shuffle' | 'reset'
+
 const TILE_SNAP_RATIO = 0.34
 
 function HelpIcon() {
@@ -254,6 +256,7 @@ export function LexplosionApp({
   const [stepIndex, setStepIndex] = useState(initialState.stepIndex)
   const [statusMessage, setStatusMessage] = useState(initialState.statusMessage)
   const [helpOpen, setHelpOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const dragPathRef = useRef<Position[]>([])
   const isDraggingRef = useRef(false)
   const activePointerIdRef = useRef<number | null>(null)
@@ -717,6 +720,34 @@ export function LexplosionApp({
     setStatusMessage(`Board shuffled for -${SHUFFLE_PENALTY}.`)
   }
 
+  function requestShuffle() {
+    if (inputLocked) {
+      return
+    }
+
+    setConfirmAction('shuffle')
+  }
+
+  function requestReset() {
+    setConfirmAction('reset')
+  }
+
+  function closeConfirmDialog() {
+    setConfirmAction(null)
+  }
+
+  function confirmPendingAction() {
+    if (confirmAction === 'shuffle') {
+      handleShuffle()
+    }
+
+    if (confirmAction === 'reset') {
+      resetGame()
+    }
+
+    setConfirmAction(null)
+  }
+
   function setSelectedPath(path: Position[]) {
     dragPathRef.current = path
     setGame((current) => ({ ...current, selectedPath: path }))
@@ -904,7 +935,7 @@ export function LexplosionApp({
             <button
               aria-label={`Shuffle board for -${SHUFFLE_PENALTY}`}
               className="app__icon-button"
-              onClick={handleShuffle}
+              onClick={requestShuffle}
               type="button"
             >
               <ShuffleIcon />
@@ -920,7 +951,7 @@ export function LexplosionApp({
             <button
               aria-label="Restart run"
               className="app__icon-button"
-              onClick={resetGame}
+              onClick={requestReset}
               type="button"
             >
               <RestartIcon />
@@ -995,6 +1026,56 @@ export function LexplosionApp({
                 })}
                 <li>Shuffle rescues a bad board for {SHUFFLE_PENALTY} points.</li>
               </ul>
+            </section>
+          </div>
+        ) : null}
+
+        {confirmAction ? (
+          <div
+            aria-modal="true"
+            className="help-overlay"
+            role="dialog"
+            onClick={closeConfirmDialog}
+          >
+            <section
+              aria-label={
+                confirmAction === 'shuffle' ? 'Confirm shuffle' : 'Confirm restart'
+              }
+              className="help-card confirm-card"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="help-card__header">
+                <h2>{confirmAction === 'shuffle' ? 'Shuffle Board?' : 'Restart Run?'}</h2>
+                <button
+                  aria-label="Close confirmation"
+                  className="help-card__close"
+                  onClick={closeConfirmDialog}
+                  type="button"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="confirm-card__body">
+                {confirmAction === 'shuffle'
+                  ? `This will reshuffle the board and cost ${SHUFFLE_PENALTY} points.`
+                  : 'This will discard the current board and start a fresh run.'}
+              </p>
+              <div className="confirm-card__actions">
+                <button
+                  className="confirm-card__button confirm-card__button--ghost"
+                  onClick={closeConfirmDialog}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="confirm-card__button confirm-card__button--danger"
+                  onClick={confirmPendingAction}
+                  type="button"
+                >
+                  {confirmAction === 'shuffle' ? 'Shuffle' : 'Restart'}
+                </button>
+              </div>
             </section>
           </div>
         ) : null}

@@ -270,8 +270,28 @@ describe('LexplosionApp', () => {
     ])
 
     fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Shuffle' }))
 
     expect(screen.getByText('Board shuffled for -75.')).toBeInTheDocument()
+  })
+
+  it('can cancel the shuffle confirmation', () => {
+    renderApp([
+      'CATQZ',
+      'RLMNV',
+      'SPTUW',
+      'ODGHI',
+      'YJBCD',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
+
+    expect(screen.getByText('Shuffle Board?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByText('Shuffle Board?')).toBeNull()
+    expect(screen.queryByText('Board shuffled for -75.')).toBeNull()
   })
 
   it('shows special tile rules in help and renders special tile markers', () => {
