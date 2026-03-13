@@ -4,6 +4,13 @@ export const BOARD_SIZE = 6
 export const SHUFFLE_PENALTY = 75
 export const TARGET_EASY_WORDS = 3
 export const REFILL_EASY_WORDS = 1
+export const INVALID_FLASH_MS = 360
+export const CONNECTOR_OFFSET = 0.32
+export const MATCH_FEEDBACK_STEP_MULTIPLIER = 3
+export const TILE_CLEAR_ANIMATION_MS = 1200
+export const FLOAT_WORD_DURATION_MS = 1800
+export const FLOAT_SCORE_DURATION_MS = 2100
+export const SCORE_PULSE_DURATION_MS = 900
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [
   ['A', 10],

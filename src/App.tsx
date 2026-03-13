@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   startTransition,
   useEffect,
@@ -8,7 +9,17 @@ import {
   useState,
 } from 'react'
 import './App.css'
-import { SHUFFLE_PENALTY, STEP_DURATIONS } from './game/constants'
+import {
+  CONNECTOR_OFFSET,
+  FLOAT_SCORE_DURATION_MS,
+  FLOAT_WORD_DURATION_MS,
+  INVALID_FLASH_MS,
+  MATCH_FEEDBACK_STEP_MULTIPLIER,
+  SCORE_PULSE_DURATION_MS,
+  SHUFFLE_PENALTY,
+  STEP_DURATIONS,
+  TILE_CLEAR_ANIMATION_MS,
+} from './game/constants'
 import { createGame, shuffleGame, submitSelection } from './game/engine'
 import type {
   FoundWord,
@@ -25,8 +36,6 @@ interface LexplosionAppProps {
 }
 
 const TILE_SNAP_RATIO = 0.34
-const INVALID_FLASH_MS = 360
-const CONNECTOR_OFFSET = 0.32
 
 function formatCombo(combo: number): string {
   return combo > 1 ? `${combo}x cascade` : combo === 1 ? 'Word hit' : 'Ready'
@@ -50,6 +59,14 @@ interface OverlaySegment {
   midY: number
   angle: number
   variant: 'active' | 'invalid' | 'event'
+}
+
+interface FloatingLabel {
+  key: string
+  x: number
+  y: number
+  text: string
+  variant: 'word' | 'score'
 }
 
 export function LexplosionApp({
@@ -106,6 +123,13 @@ export function LexplosionApp({
     [displayedClearWordDetails],
   )
 
+  const visibleClearStep =
+    activeStep?.phase === 'clear'
+      ? activeStep
+      : activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear'
+        ? previousStep
+        : null
+
   const runtimeStatusMessage = activeStep
     ? activeStep.phase === 'clear'
       ? `${activeStep.combo > 1 ? 'Auto-clearing' : 'Clearing'} ${formatWords(
@@ -145,9 +169,16 @@ export function LexplosionApp({
       return
     }
 
+    const step = pendingTurn.steps[stepIndex]
+    const baseDuration = animationDurations[step.phase]
+    const duration =
+      step.phase === 'clear' || step.phase === 'pause-clear'
+        ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
+        : baseDuration
+
     const timeoutId = window.setTimeout(() => {
       setStepIndex((current) => current + 1)
-    }, animationDurations[pendingTurn.steps[stepIndex].phase])
+    }, duration)
 
     return () => window.clearTimeout(timeoutId)
   }, [animationDurations, pendingTurn, stepIndex])
@@ -237,6 +268,52 @@ export function LexplosionApp({
 
     return clearGroups.length > 0 ? buildSegments(clearGroups, 'event') : []
   }, [displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
+
+  const floatingLabels = useMemo(() => {
+    if (displayedClearWordDetails.length === 0 || !visibleClearStep) {
+      return []
+    }
+
+    const rowCount = displayBoard.length
+    const colCount = displayBoard[0]?.length ?? 1
+    const wordLabels: FloatingLabel[] = displayedClearWordDetails.map((word, index) => {
+      const center = word.positions.reduce(
+        (accumulator, position) => ({
+          x: accumulator.x + position.col + 0.5,
+          y: accumulator.y + position.row + 0.5,
+        }),
+        { x: 0, y: 0 },
+      )
+      const count = word.positions.length || 1
+
+      return {
+        key: `word-${word.word}-${index}`,
+        x: (center.x / count / colCount) * 100,
+        y: (center.y / count / rowCount) * 100,
+        text: word.word,
+        variant: 'word',
+      }
+    })
+
+    const scoreCenter = wordLabels.reduce(
+      (accumulator, label) => ({
+        x: accumulator.x + label.x,
+        y: accumulator.y + label.y,
+      }),
+      { x: 0, y: 0 },
+    )
+
+    return [
+      ...wordLabels,
+      {
+        key: `score-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
+        x: scoreCenter.x / wordLabels.length,
+        y: Math.max(8, scoreCenter.y / wordLabels.length - 15),
+        text: `+${visibleClearStep.scoreDelta}`,
+        variant: 'score',
+      },
+    ]
+  }, [displayBoard, displayedClearWordDetails, visibleClearStep])
 
   function resetGame() {
     const nextGame = createGame()
@@ -427,7 +504,17 @@ export function LexplosionApp({
   }
 
   return (
-    <main className="shell">
+    <main
+      className="shell"
+      style={
+        {
+          '--tile-clear-duration': `${TILE_CLEAR_ANIMATION_MS}ms`,
+          '--float-word-duration': `${FLOAT_WORD_DURATION_MS}ms`,
+          '--float-score-duration': `${FLOAT_SCORE_DURATION_MS}ms`,
+          '--score-pulse-duration': `${SCORE_PULSE_DURATION_MS}ms`,
+        } as CSSProperties
+      }
+    >
       <section className="app">
         <header className="app__header">
           <h1>Letterquake</h1>
@@ -444,7 +531,11 @@ export function LexplosionApp({
         <section className="status-bar" aria-label="game stats">
           <div className="status-pill">
             <span>Score</span>
-            <strong>{game.score}</strong>
+            <strong
+              className={visibleClearStep ? 'status-pill__value--pulse' : ''}
+            >
+              {game.score}
+            </strong>
           </div>
           <div className="status-pill">
             <span>Turn</span>
@@ -514,6 +605,15 @@ export function LexplosionApp({
                 )
               })}
             </svg>
+            {floatingLabels.map((label) => (
+              <div
+                className={`board__float board__float--${label.variant}`}
+                key={label.key}
+                style={{ left: `${label.x}%`, top: `${label.y}%` }}
+              >
+                {label.text}
+              </div>
+            ))}
             {displayBoard.map((row, rowIndex) =>
               row.map((tile, colIndex) => {
                 const position = { row: rowIndex, col: colIndex }
