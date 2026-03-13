@@ -25,6 +25,10 @@ import {
   MATCH_FEEDBACK_STEP_MULTIPLIER,
   SCORE_PULSE_DURATION_MS,
   SHUFFLE_PENALTY,
+  SPAWN_BASE_DURATION_MS,
+  SPAWN_COLUMN_SWEEP_MS,
+  SPAWN_DELAY_PER_ROW_MS,
+  SPAWN_DURATION_PER_ROW_MS,
   STEP_DURATIONS,
   TILE_CLEAR_ANIMATION_MS,
 } from './game/constants'
@@ -79,6 +83,61 @@ interface FloatingLabel {
   delayMs: number
 }
 
+function createEmptyBoard(size: number) {
+  return Array.from({ length: size }, () =>
+    Array.from({ length: size }, () => null as GameState['board'][number][number]),
+  )
+}
+
+function buildIntroTurn(nextGame: GameState): TurnResult {
+  const spawnedPositions: Position[] = []
+  nextGame.board.forEach((row, rowIndex) => {
+    row.forEach((tile, colIndex) => {
+      if (tile) {
+        spawnedPositions.push({ row: rowIndex, col: colIndex })
+      }
+    })
+  })
+
+  return {
+    valid: true,
+    nextState: nextGame,
+    steps: [
+      {
+        phase: 'refill',
+        board: nextGame.board,
+        words: [],
+        clearedPositions: [],
+        movedPositions: [],
+        spawnedPositions,
+        combo: 0,
+        scoreDelta: 0,
+      },
+    ],
+  }
+}
+
+function createInitialAppState(initialGame?: GameState) {
+  if (initialGame) {
+    return {
+      game: initialGame,
+      pendingTurn: null as TurnResult | null,
+      stepIndex: -1,
+      statusMessage: initialGame.gameOver
+        ? 'No words left on the board. Start a new run.'
+        : 'Drag across adjacent letters to spell a word.',
+    }
+  }
+
+  const nextGame = createGame()
+  return {
+    game: { ...nextGame, board: createEmptyBoard(nextGame.board.length) },
+    pendingTurn: buildIntroTurn(nextGame),
+    stepIndex: 0,
+    statusMessage: 'Board filling in.',
+  }
+}
+
 function buildClearDelayMap(words: FoundWord[]): Map<string, number> {
   const delays = new Map<string, number>()
 
@@ -115,14 +174,13 @@ export function LexplosionApp({
   initialGame,
   stepDurations,
 }: LexplosionAppProps) {
-  const [game, setGame] = useState<GameState>(() => initialGame ?? createGame())
-  const [pendingTurn, setPendingTurn] = useState<TurnResult | null>(null)
-  const [stepIndex, setStepIndex] = useState(-1)
-  const [statusMessage, setStatusMessage] = useState(
-    game.gameOver
-      ? 'No words left on the board. Start a new run.'
-      : 'Drag across adjacent letters to spell a word.',
+  const [initialState] = useState(() => createInitialAppState(initialGame))
+  const [game, setGame] = useState<GameState>(initialState.game)
+  const [pendingTurn, setPendingTurn] = useState<TurnResult | null>(
+    initialState.pendingTurn,
   )
+  const [stepIndex, setStepIndex] = useState(initialState.stepIndex)
+  const [statusMessage, setStatusMessage] = useState(initialState.statusMessage)
   const dragPathRef = useRef<Position[]>([])
   const isDraggingRef = useRef(false)
   const activePointerIdRef = useRef<number | null>(null)
@@ -214,34 +272,6 @@ export function LexplosionApp({
     })
   })
 
-  useEffect(() => {
-    if (!pendingTurn) {
-      return
-    }
-
-    if (stepIndex >= pendingTurn.steps.length) {
-      finishTurn(pendingTurn)
-      return
-    }
-
-    const step = pendingTurn.steps[stepIndex]
-    const baseDuration = animationDurations[step.phase]
-    const duration =
-      step.phase === 'clear'
-        ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER) +
-          clearWaveDuration +
-          CLEAR_WAVE_HOLD_MS
-        : step.phase === 'pause-clear'
-          ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
-        : baseDuration
-
-    const timeoutId = window.setTimeout(() => {
-      setStepIndex((current) => current + 1)
-    }, duration)
-
-    return () => window.clearTimeout(timeoutId)
-  }, [animationDurations, clearWaveDuration, pendingTurn, stepIndex])
-
   const boardClassName = [
     'board',
     activeStep?.phase === 'clear' ? 'board--shake' : '',
@@ -303,6 +333,80 @@ export function LexplosionApp({
     return motion
   }, [activeStep, previousStep])
   const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
+  const spawnMotionMap = useMemo(() => {
+    const motion = new Map<
+      string,
+      { rowsMoved: number; delayMs: number; durationMs: number }
+    >()
+
+    if (activeStep?.phase !== 'refill') {
+      return motion
+    }
+
+    const spawnedByColumn = new Map<number, Position[]>()
+    activeStep.spawnedPositions.forEach((position) => {
+      const existing = spawnedByColumn.get(position.col)
+      if (existing) {
+        existing.push(position)
+      } else {
+        spawnedByColumn.set(position.col, [position])
+      }
+    })
+
+    spawnedByColumn.forEach((positions, col) => {
+      positions
+        .slice()
+        .sort((left, right) => left.row - right.row)
+        .forEach((position, spawnIndex) => {
+          const rowsMoved = spawnIndex + 1
+          motion.set(hashPosition(position), {
+            rowsMoved,
+            delayMs: spawnIndex * SPAWN_DELAY_PER_ROW_MS + col * SPAWN_COLUMN_SWEEP_MS,
+            durationMs:
+              SPAWN_BASE_DURATION_MS + (rowsMoved - 1) * SPAWN_DURATION_PER_ROW_MS,
+          })
+        })
+    })
+
+    return motion
+  }, [activeStep])
+  const spawnMotionWindow = useMemo(() => {
+    let maxWindow = 0
+    spawnMotionMap.forEach(({ delayMs, durationMs }) => {
+      maxWindow = Math.max(maxWindow, delayMs + durationMs)
+    })
+    return maxWindow
+  }, [spawnMotionMap])
+
+  useEffect(() => {
+    if (!pendingTurn) {
+      return
+    }
+
+    if (stepIndex >= pendingTurn.steps.length) {
+      finishTurn(pendingTurn)
+      return
+    }
+
+    const step = pendingTurn.steps[stepIndex]
+    const baseDuration = animationDurations[step.phase]
+    const duration =
+      step.phase === 'clear'
+        ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER) +
+          clearWaveDuration +
+          CLEAR_WAVE_HOLD_MS
+        : step.phase === 'pause-clear'
+          ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
+          : step.phase === 'refill'
+            ? Math.max(baseDuration, spawnMotionWindow)
+            : baseDuration
+
+    const timeoutId = window.setTimeout(() => {
+      setStepIndex((current) => current + 1)
+    }, duration)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [animationDurations, clearWaveDuration, pendingTurn, spawnMotionWindow, stepIndex])
 
   useEffect(() => {
     return () => {
@@ -431,10 +535,10 @@ export function LexplosionApp({
       invalidResetTimeoutRef.current = null
     }
     setInvalidPath([])
-    setGame(nextGame)
-    setPendingTurn(null)
-    setStepIndex(-1)
-    setStatusMessage('Fresh board. Drag to trace your first word.')
+    setGame({ ...nextGame, board: createEmptyBoard(nextGame.board.length) })
+    setPendingTurn(buildIntroTurn(nextGame))
+    setStepIndex(0)
+    setStatusMessage('Board filling in.')
   }
 
   function handleShuffle() {
@@ -776,14 +880,19 @@ export function LexplosionApp({
                   .join(' ')
                 const clearDelay = clearDelayMap.get(positionKey) ?? 0
                 const fallMotion = fallMotionMap.get(positionKey)
+                const spawnMotion = spawnMotionMap.get(positionKey)
                 const tileStyle =
                   highlightedPositions.cleared.has(positionKey) ||
-                  highlightedPositions.moved.has(positionKey)
+                  highlightedPositions.moved.has(positionKey) ||
+                  highlightedPositions.spawned.has(positionKey)
                     ? ({
                         '--clear-delay': `${clearDelay}ms`,
                         '--fall-delay': `${fallMotion?.delayMs ?? 0}ms`,
                         '--fall-duration': `${fallMotion?.durationMs ?? FALL_BASE_DURATION_MS}ms`,
                         '--fall-distance-rows': `${fallMotion?.rowsMoved ?? 1}`,
+                        '--spawn-delay': `${spawnMotion?.delayMs ?? 0}ms`,
+                        '--spawn-duration': `${spawnMotion?.durationMs ?? SPAWN_BASE_DURATION_MS}ms`,
+                        '--spawn-distance-rows': `${spawnMotion?.rowsMoved ?? 1}`,
                       } as CSSProperties)
                     : undefined
 
@@ -795,7 +904,7 @@ export function LexplosionApp({
                     data-row={rowIndex}
                     data-testid={`tile-${rowIndex}-${colIndex}`}
                     disabled={inputLocked || !tile}
-                    key={`${rowIndex}-${colIndex}`}
+                    key={tile?.id ?? `empty-${rowIndex}-${colIndex}`}
                     onPointerDown={(event) => handleTilePointerDown(event, position)}
                     style={tileStyle}
                     type="button"

@@ -375,7 +375,9 @@
 }
 
 .tile--spawning {
-  animation: tile-spawn 260ms cubic-bezier(0.16, 0.8, 0.24, 1);
+  animation: tile-spawn var(--spawn-duration, 240ms) cubic-bezier(0.16, 0.68, 0.2, 1) both;
+  animation-delay: var(--spawn-delay, 0ms);
+  opacity: 0;
 }
 
 .board-panel__footer {
@@ -462,9 +464,20 @@
 
 @keyframes tile-spawn {
   0% {
-    transform: translateY(-12px);
+    opacity: 0;
+    transform: translateY(
+      calc(var(--spawn-distance-rows, 1) * (-100% - var(--board-gap)))
+    );
+  }
+  38% {
+    opacity: 0.72;
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(calc(var(--fall-land-bounce) * 0.45));
   }
   100% {
+    opacity: 1;
     transform: translateY(0);
   }
 }

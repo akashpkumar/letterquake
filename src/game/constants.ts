@@ -19,6 +19,10 @@ export const FALL_DURATION_PER_ROW_MS = 90
 export const FALL_DELAY_PER_ROW_MS = 26
 export const FALL_COLUMN_SWEEP_MS = 30
 export const FALL_LAND_BOUNCE_PX = 3
+export const SPAWN_BASE_DURATION_MS = 340
+export const SPAWN_DURATION_PER_ROW_MS = 105
+export const SPAWN_DELAY_PER_ROW_MS = 34
+export const SPAWN_COLUMN_SWEEP_MS = 28
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [
   ['A', 10],
