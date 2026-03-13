@@ -14,6 +14,7 @@ import {
   CLEAR_WAVE_STAGGER_MS,
   CONNECTOR_OFFSET,
   FALL_BASE_DURATION_MS,
+  FALL_COLUMN_SWEEP_MS,
   FALL_DELAY_PER_ROW_MS,
   FALL_DURATION_PER_ROW_MS,
   FALL_LAND_BOUNCE_PX,
@@ -244,7 +245,6 @@ export function LexplosionApp({
   const boardClassName = [
     'board',
     activeStep?.phase === 'clear' ? 'board--shake' : '',
-    activeStep?.phase === 'pause-clear' ? 'board--aftershock' : '',
     activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
     inputLocked ? 'board--locked' : '',
   ]
@@ -293,7 +293,9 @@ export function LexplosionApp({
       const rowsMoved = Math.max(1, position.row - previousPosition.row)
       motion.set(hashPosition(position), {
         rowsMoved,
-        delayMs: (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS,
+        delayMs:
+          (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS +
+          position.col * FALL_COLUMN_SWEEP_MS,
         durationMs: FALL_BASE_DURATION_MS + (rowsMoved - 1) * FALL_DURATION_PER_ROW_MS,
       })
     })

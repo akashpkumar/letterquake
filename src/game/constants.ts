@@ -17,6 +17,7 @@ export const SCORE_PULSE_DURATION_MS = 900
 export const FALL_BASE_DURATION_MS = 260
 export const FALL_DURATION_PER_ROW_MS = 90
 export const FALL_DELAY_PER_ROW_MS = 26
+export const FALL_COLUMN_SWEEP_MS = 30
 export const FALL_LAND_BOUNCE_PX = 3
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [

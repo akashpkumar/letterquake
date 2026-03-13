@@ -159,10 +159,6 @@
   animation: board-shake 250ms ease;
 }
 
-.board--aftershock {
-  transform: scale(0.985);
-}
-
 .board--settled {
   opacity: 0.94;
 }
