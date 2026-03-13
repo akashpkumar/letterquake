@@ -23,6 +23,8 @@ import type {
 
 const MIN_WORD_LENGTH = 3
 const EASY_WORD_SET = new Set<string>(EASY_WORDS)
+const VOWELS = new Set(['A', 'E', 'I', 'O', 'U', 'Y'])
+const HARSH_CONSONANTS = new Set(['J', 'Q', 'V', 'X', 'Z'])
 
 let tileSequence = 0
 
@@ -69,6 +71,18 @@ function pickRandomItem<T>(items: readonly T[], seed: number): [T, number] {
   return [items[index], updatedSeed]
 }
 
+function buildPrefixSet(words: string[]): Set<string> {
+  const prefixes = new Set<string>()
+  words.forEach((word) => {
+    for (let index = 1; index <= word.length; index += 1) {
+      prefixes.add(word.slice(0, index))
+    }
+  })
+  return prefixes
+}
+
+const PREFIX_SET = buildPrefixSet(COMMON_WORDS)
+
 function scoreWord(length: number, combo: number): number {
   return length * length * 10 * combo
 }
@@ -89,6 +103,18 @@ export function boardToRows(board: Board): string[] {
 
 export function positionsToWord(board: Board, positions: Position[]): string {
   return positions.map((position) => board[position.row][position.col]?.letter ?? '').join('')
+}
+
+export function classifyWordProgress(word: string): 'idle' | 'building' | 'word' | 'dead' {
+  if (word.length === 0) {
+    return 'idle'
+  }
+
+  if (word.length >= MIN_WORD_LENGTH && DICTIONARY_SET.has(word)) {
+    return 'word'
+  }
+
+  return PREFIX_SET.has(word) ? 'building' : 'dead'
 }
 
 export function areAdjacent(a: Position, b: Position): boolean {
@@ -259,6 +285,129 @@ function applyGravity(board: Board): { board: Board; moved: Position[] } {
   return { board: nextBoard, moved }
 }
 
+function countLettersMatching(
+  letters: string[],
+  predicate: (letter: string) => boolean,
+): number {
+  return letters.reduce((count, letter) => count + (predicate(letter) ? 1 : 0), 0)
+}
+
+function scoreFragment(fragment: string): number {
+  if (fragment.length <= 1) {
+    return 0
+  }
+
+  let score = 0
+  if (PREFIX_SET.has(fragment)) {
+    score += fragment.length >= MIN_WORD_LENGTH ? 7 : 4
+  }
+  if (DICTIONARY_SET.has(fragment)) {
+    score += 8
+  }
+
+  const letters = fragment.split('')
+  const vowelCount = countLettersMatching(letters, (letter) => VOWELS.has(letter))
+  if (vowelCount === 0 && fragment.length >= 3) {
+    score -= 7
+  } else if (vowelCount === 1 && fragment.length >= 3) {
+    score += 2
+  } else if (vowelCount >= 2) {
+    score += 1
+  }
+
+  const harshCount = countLettersMatching(letters, (letter) => HARSH_CONSONANTS.has(letter))
+  if (harshCount >= 2) {
+    score -= harshCount * 2
+  }
+
+  if (fragment.includes('Q') && !fragment.includes('QU')) {
+    score -= 12
+  }
+
+  return score
+}
+
+function scoreCandidateLetter(board: Board, row: number, col: number, letter: string): number {
+  const left = col > 0 ? board[row][col - 1]?.letter ?? '' : ''
+  const left2 = col > 1 ? board[row][col - 2]?.letter ?? '' : ''
+  const right = col + 1 < board[row].length ? board[row][col + 1]?.letter ?? '' : ''
+  const up = row > 0 ? board[row - 1][col]?.letter ?? '' : ''
+  const up2 = row > 1 ? board[row - 2][col]?.letter ?? '' : ''
+  const down = row + 1 < board.length ? board[row + 1][col]?.letter ?? '' : ''
+
+  const horizontal = `${left2}${left}${letter}${right}`.replaceAll('.', '')
+  const vertical = `${up2}${up}${letter}${down}`.replaceAll('.', '')
+  const immediatePairs = [`${left}${letter}`, `${up}${letter}`, `${letter}${right}`, `${letter}${down}`]
+  const localNeighbors = [left, right, up, down].filter(Boolean)
+
+  let score = 0
+  score += scoreFragment(horizontal)
+  score += scoreFragment(vertical)
+
+  immediatePairs.forEach((pair) => {
+    if (pair.length === 2 && PREFIX_SET.has(pair)) {
+      score += 2
+    }
+    if (pair === 'QU') {
+      score += 8
+    }
+  })
+
+  if (VOWELS.has(letter)) {
+    const neighborVowels = countLettersMatching(localNeighbors, (entry) => VOWELS.has(entry))
+    if (neighborVowels === 0) {
+      score += 3
+    } else if (neighborVowels >= 3) {
+      score -= 2
+    }
+  } else {
+    const consonantNeighbors = countLettersMatching(localNeighbors, (entry) => !VOWELS.has(entry))
+    if (consonantNeighbors >= 3) {
+      score -= 4
+    }
+  }
+
+  if (letter === 'Q' && !localNeighbors.includes('U')) {
+    score -= 10
+  }
+  if (letter === 'U' && localNeighbors.includes('Q')) {
+    score += 6
+  }
+
+  return score
+}
+
+function chooseRefillLetter(board: Board, row: number, col: number, seed: number): [string, number] {
+  let currentSeed = seed
+  let bestLetter = 'E'
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const leftTile = col > 0 ? board[row][col - 1] : null
+    const upTile = row > 0 ? board[row - 1][col] : null
+    let letter: string
+    let updatedSeed: number
+
+    const [clusterRoll, clusterSeed] = randomFloat(currentSeed)
+    if (leftTile && CLUSTER_FOLLOWS[leftTile.letter] && clusterRoll < 0.34) {
+      ;[letter, updatedSeed] = pickRandomItem(CLUSTER_FOLLOWS[leftTile.letter], clusterSeed)
+    } else if (upTile && CLUSTER_FOLLOWS[upTile.letter] && clusterRoll < 0.5) {
+      ;[letter, updatedSeed] = pickRandomItem(CLUSTER_FOLLOWS[upTile.letter], clusterSeed)
+    } else {
+      ;[letter, updatedSeed] = pickWeightedLetter(clusterSeed)
+    }
+
+    currentSeed = updatedSeed
+    const score = scoreCandidateLetter(board, row, col, letter)
+    if (score > bestScore) {
+      bestScore = score
+      bestLetter = letter
+    }
+  }
+
+  return [bestLetter, currentSeed]
+}
+
 function refillBoard(board: Board, seed: number): { board: Board; spawned: Position[]; seed: number } {
   const nextBoard = cloneBoard(board)
   const spawned: Position[] = []
@@ -270,26 +419,7 @@ function refillBoard(board: Board, seed: number): { board: Board; spawned: Posit
         continue
       }
 
-      const leftTile = col > 0 ? nextBoard[row][col - 1] : null
-      const upTile = row > 0 ? nextBoard[row - 1][col] : null
-      let letter: string
-      let updatedSeed: number
-
-      const [clusterRoll, clusterSeed] = randomFloat(currentSeed)
-      if (leftTile && CLUSTER_FOLLOWS[leftTile.letter] && clusterRoll < 0.34) {
-        ;[letter, updatedSeed] = pickRandomItem(
-          CLUSTER_FOLLOWS[leftTile.letter],
-          clusterSeed,
-        )
-      } else if (upTile && CLUSTER_FOLLOWS[upTile.letter] && clusterRoll < 0.5) {
-        ;[letter, updatedSeed] = pickRandomItem(
-          CLUSTER_FOLLOWS[upTile.letter],
-          clusterSeed,
-        )
-      } else {
-        ;[letter, updatedSeed] = pickWeightedLetter(clusterSeed)
-      }
-
+      const [letter, updatedSeed] = chooseRefillLetter(nextBoard, row, col, currentSeed)
       currentSeed = updatedSeed
       nextBoard[row][col] = makeTile(letter)
       spawned.push({ row, col })
@@ -556,18 +686,6 @@ function neighbors(position: Position, board: Board): Position[] {
   }
   return result
 }
-
-function buildPrefixSet(words: string[]): Set<string> {
-  const prefixes = new Set<string>()
-  words.forEach((word) => {
-    for (let index = 1; index <= word.length; index += 1) {
-      prefixes.add(word.slice(0, index))
-    }
-  })
-  return prefixes
-}
-
-const PREFIX_SET = buildPrefixSet(COMMON_WORDS)
 
 export function hasPlayableWord(board: Board): boolean {
   if (findStraightWords(board).length > 0) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   boardToRows,
+  classifyWordProgress,
   createGame,
   findStraightWords,
   hasPlayableWord,
@@ -30,6 +31,13 @@ describe('engine', () => {
         { row: 0, col: 2 },
       ]),
     ).toBe('CAT')
+  })
+
+  it('classifies live word progress for drag feedback', () => {
+    expect(classifyWordProgress('')).toBe('idle')
+    expect(classifyWordProgress('CA')).toBe('building')
+    expect(classifyWordProgress('CAT')).toBe('word')
+    expect(classifyWordProgress('QZX')).toBe('dead')
   })
 
   it('validates adjacent non-repeating paths', () => {
@@ -164,15 +172,19 @@ describe('engine', () => {
     expect(createGame({ board, seed: 5 }).gameOver).toBe(true)
   })
 
-  it('creates boards with at least one obvious straight word and a playable state', () => {
+  it('creates boards with visible straight-word opportunities and a playable state', () => {
     const game = createGame(17)
+    const straightWords = findStraightWords(game.board)
 
-    const easyWords = findStraightWords(game.board).filter((word) =>
-      ['CAT', 'DOG', 'TIME', 'READ', 'PLAY', 'GAME', 'WORD', 'DIE'].includes(word.word),
-    )
-
-    expect(easyWords.length).toBeGreaterThanOrEqual(1)
+    expect(straightWords.length).toBeGreaterThanOrEqual(1)
     expect(hasPlayableWord(game.board)).toBe(true)
+  })
+
+  it('avoids seeding fallback boards with harsh junk rows', () => {
+    const game = createGame(17)
+    const rows = boardToRows(game.board)
+
+    expect(rows.some((row) => /QZX|ZXQ|XQZ/.test(row))).toBe(false)
   })
 
   it('supports shuffle with a score penalty and a fresh playable board', () => {

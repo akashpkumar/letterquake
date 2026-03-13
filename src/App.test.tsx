@@ -162,6 +162,44 @@ describe('LexplosionApp', () => {
     expect(getWordPreview()).toBe('C')
   })
 
+  it('shows live word state while dragging', () => {
+    renderApp([
+      'CATQZX',
+      'RLMNVB',
+      'SPTUWE',
+      'ODGHIK',
+      'YJBCDF',
+      'EGHIRT',
+    ])
+
+    installBoardGeometry()
+
+    fireEvent.pointerDown(screen.getByTestId('tile-0-0'), {
+      pointerId: 1,
+      clientX: 20,
+      clientY: 20,
+    })
+    fireEvent.pointerMove(screen.getByTestId('board'), {
+      pointerId: 1,
+      clientX: 64,
+      clientY: 20,
+    })
+
+    expect(screen.getByText('Building')).toBeInTheDocument()
+    expect(screen.getAllByText('CA')).toHaveLength(2)
+
+    fireEvent.pointerMove(screen.getByTestId('board'), {
+      pointerId: 1,
+      clientX: 108,
+      clientY: 20,
+    })
+
+    expect(document.querySelector('.word-banner--word .word-banner__label')?.textContent).toBe(
+      'Ready',
+    )
+    expect(screen.getAllByText('CAT')).toHaveLength(2)
+  })
+
   it('renders score, cleared count, and game-over state', () => {
     renderApp([
       'QZXQZX',

@@ -9,7 +9,13 @@ import {
 } from 'react'
 import './App.css'
 import { SHUFFLE_PENALTY, STEP_DURATIONS } from './game/constants'
-import { createGame, positionsToWord, shuffleGame, submitSelection } from './game/engine'
+import {
+  classifyWordProgress,
+  createGame,
+  positionsToWord,
+  shuffleGame,
+  submitSelection,
+} from './game/engine'
 import type {
   GameState,
   Position,
@@ -120,6 +126,20 @@ export function LexplosionApp({
 
     return 'Trace a connected word.'
   }, [activeStep, game.board, game.lastWords, game.selectedPath])
+
+  const liveWordState = useMemo(
+    () => classifyWordProgress(game.selectedPath.length > 0 ? movePreview : ''),
+    [game.selectedPath.length, movePreview],
+  )
+
+  const liveWordLabel =
+    game.selectedPath.length === 0
+      ? 'Word'
+      : liveWordState === 'word'
+        ? 'Ready'
+        : liveWordState === 'dead'
+          ? 'Dead end'
+          : 'Building'
 
   const highlightedPositions = useMemo(() => {
     const selected = new Set(game.selectedPath.map(hashPosition))
@@ -367,6 +387,21 @@ export function LexplosionApp({
 
           <div
             aria-live="polite"
+            className={[
+              'word-banner',
+              game.selectedPath.length > 0 ? 'word-banner--active' : '',
+              liveWordState === 'word' ? 'word-banner--word' : '',
+              liveWordState === 'dead' ? 'word-banner--dead' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <span className="word-banner__label">{liveWordLabel}</span>
+            <strong className="word-banner__value">{movePreview}</strong>
+          </div>
+
+          <div
+            aria-live="polite"
             className={boardClassName}
             data-testid="board"
             onPointerMove={handleBoardPointerMove}
@@ -409,7 +444,7 @@ export function LexplosionApp({
           <div className="board-panel__footer">
             <div>
               <p className="board-panel__label">Word</p>
-              <p className="board-panel__words">{movePreview}</p>
+              <p className="board-panel__words">{game.selectedPath.length > 0 ? movePreview : 'Trace a connected word.'}</p>
             </div>
             <div>
               <p className="board-panel__label">Last score</p>
