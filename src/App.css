@@ -7,6 +7,8 @@
   --fall-land-bounce: 3px;
   min-height: 100vh;
   padding: 1rem;
+  display: grid;
+  place-items: center;
   color: var(--ink);
   background: #000;
 }
