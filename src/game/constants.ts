@@ -8,9 +8,16 @@ export const INVALID_FLASH_MS = 360
 export const CONNECTOR_OFFSET = 0.32
 export const MATCH_FEEDBACK_STEP_MULTIPLIER = 3
 export const TILE_CLEAR_ANIMATION_MS = 1200
+export const CLEAR_WAVE_STAGGER_MS = 90
+export const CLEAR_WAVE_HOLD_MS = 180
 export const FLOAT_WORD_DURATION_MS = 1800
 export const FLOAT_SCORE_DURATION_MS = 2100
+export const FLOAT_SCORE_DELAY_MS = 320
 export const SCORE_PULSE_DURATION_MS = 900
+export const FALL_BASE_DURATION_MS = 260
+export const FALL_DURATION_PER_ROW_MS = 90
+export const FALL_DELAY_PER_ROW_MS = 26
+export const FALL_LAND_BOUNCE_PX = 3
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [
   ['A', 10],

@@ -8,7 +8,7 @@ function renderApp(boardRows: string[]) {
   return render(
     <LexplosionApp
       initialGame={game}
-      stepDurations={{ clear: 1, gravity: 1, refill: 1 }}
+      stepDurations={{ clear: 1, 'pause-clear': 1, gravity: 1, 'pause-refill': 1, refill: 1 }}
     />,
   )
 }
@@ -91,6 +91,8 @@ describe('LexplosionApp', () => {
 
     expect(screen.getByText(/^Clear(?:ed|ing) CAT$/)).toBeInTheDocument()
     expect(screen.getAllByTestId('overlay-event')).toHaveLength(2)
+    expect(screen.getByText('CAT')).toBeInTheDocument()
+    expect(screen.getByText('+90')).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -183,6 +185,8 @@ describe('LexplosionApp', () => {
     })
 
     expect(screen.getAllByTestId('overlay-active')).toHaveLength(1)
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
 
     fireEvent.pointerMove(screen.getByTestId('board'), {
       pointerId: 1,
@@ -191,6 +195,49 @@ describe('LexplosionApp', () => {
     })
 
     expect(screen.getAllByTestId('overlay-active')).toHaveLength(2)
+    expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('marks auto-clears distinctly', () => {
+    vi.useFakeTimers()
+
+    renderApp([
+      'ZZZQZX',
+      'ZZZQZX',
+      'DOGQZX',
+      'CATQZX',
+      'ZZZQZX',
+      'ZZZQZX',
+    ])
+
+    installBoardGeometry()
+
+    fireEvent.pointerDown(screen.getByTestId('tile-3-0'), {
+      pointerId: 1,
+      clientX: 20,
+      clientY: 152,
+    })
+    fireEvent.pointerMove(screen.getByTestId('board'), {
+      pointerId: 1,
+      clientX: 64,
+      clientY: 152,
+    })
+    fireEvent.pointerMove(screen.getByTestId('board'), {
+      pointerId: 1,
+      clientX: 108,
+      clientY: 152,
+    })
+    fireEvent.pointerUp(window)
+
+    for (let index = 0; index < 5; index += 1) {
+      act(() => {
+        vi.runOnlyPendingTimers()
+      })
+    }
+
+    expect(screen.getByText(/Auto-cleared|Auto-clearing/i)).toBeInTheDocument()
+    expect(document.querySelector('.combo-badge--auto')).not.toBeNull()
+    vi.useRealTimers()
   })
 
   it('renders score, cleared count, and game-over state', () => {

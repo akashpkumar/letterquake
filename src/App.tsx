@@ -10,8 +10,15 @@ import {
 } from 'react'
 import './App.css'
 import {
+  CLEAR_WAVE_HOLD_MS,
+  CLEAR_WAVE_STAGGER_MS,
   CONNECTOR_OFFSET,
+  FALL_BASE_DURATION_MS,
+  FALL_DELAY_PER_ROW_MS,
+  FALL_DURATION_PER_ROW_MS,
+  FALL_LAND_BOUNCE_PX,
   FLOAT_SCORE_DURATION_MS,
+  FLOAT_SCORE_DELAY_MS,
   FLOAT_WORD_DURATION_MS,
   INVALID_FLASH_MS,
   MATCH_FEEDBACK_STEP_MULTIPLIER,
@@ -59,6 +66,7 @@ interface OverlaySegment {
   midY: number
   angle: number
   variant: 'active' | 'invalid' | 'event'
+  delayMs: number
 }
 
 interface FloatingLabel {
@@ -66,7 +74,40 @@ interface FloatingLabel {
   x: number
   y: number
   text: string
-  variant: 'word' | 'score'
+  variant: 'word' | 'score' | 'auto-word' | 'auto-score'
+  delayMs: number
+}
+
+function buildClearDelayMap(words: FoundWord[]): Map<string, number> {
+  const delays = new Map<string, number>()
+
+  words.forEach((word) => {
+    word.positions.forEach((position, index) => {
+      const key = hashPosition(position)
+      const delay = index * CLEAR_WAVE_STAGGER_MS
+      const current = delays.get(key)
+      if (current === undefined || delay < current) {
+        delays.set(key, delay)
+      }
+    })
+  })
+
+  return delays
+}
+
+function buildTilePositionMap(board: GameState['board'] | TurnStep['board'] | null): Map<string, Position> {
+  const positions = new Map<string, Position>()
+
+  board?.forEach((row, rowIndex) => {
+    row.forEach((tile, colIndex) => {
+      if (!tile) {
+        return
+      }
+      positions.set(tile.id, { row: rowIndex, col: colIndex })
+    })
+  })
+
+  return positions
 }
 
 export function LexplosionApp({
@@ -122,6 +163,19 @@ export function LexplosionApp({
     () => displayedClearWordDetails.map((word) => word.word),
     [displayedClearWordDetails],
   )
+  const clearDelayMap = useMemo(
+    () => buildClearDelayMap(displayedClearWordDetails),
+    [displayedClearWordDetails],
+  )
+  const clearWaveDuration = useMemo(() => {
+    let maxDelay = 0
+    clearDelayMap.forEach((delay) => {
+      if (delay > maxDelay) {
+        maxDelay = delay
+      }
+    })
+    return maxDelay
+  }, [clearDelayMap])
 
   const visibleClearStep =
     activeStep?.phase === 'clear'
@@ -172,8 +226,12 @@ export function LexplosionApp({
     const step = pendingTurn.steps[stepIndex]
     const baseDuration = animationDurations[step.phase]
     const duration =
-      step.phase === 'clear' || step.phase === 'pause-clear'
-        ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
+      step.phase === 'clear'
+        ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER) +
+          clearWaveDuration +
+          CLEAR_WAVE_HOLD_MS
+        : step.phase === 'pause-clear'
+          ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
         : baseDuration
 
     const timeoutId = window.setTimeout(() => {
@@ -181,7 +239,7 @@ export function LexplosionApp({
     }, duration)
 
     return () => window.clearTimeout(timeoutId)
-  }, [animationDurations, pendingTurn, stepIndex])
+  }, [animationDurations, clearWaveDuration, pendingTurn, stepIndex])
 
   const boardClassName = [
     'board',
@@ -202,6 +260,47 @@ export function LexplosionApp({
 
     return { selected, invalid, cleared, moved, spawned }
   }, [activeStep, game.selectedPath, invalidPath])
+  const selectedOrderMap = useMemo(() => {
+    const order = new Map<string, number>()
+    game.selectedPath.forEach((position, index) => {
+      order.set(hashPosition(position), index + 1)
+    })
+    return order
+  }, [game.selectedPath])
+  const fallMotionMap = useMemo(() => {
+    const motion = new Map<
+      string,
+      { rowsMoved: number; delayMs: number; durationMs: number }
+    >()
+
+    if (activeStep?.phase !== 'gravity' || !previousStep?.board) {
+      return motion
+    }
+
+    const previousPositions = buildTilePositionMap(previousStep.board)
+
+    activeStep.movedPositions.forEach((position) => {
+      const tile = activeStep.board[position.row]?.[position.col]
+      if (!tile) {
+        return
+      }
+
+      const previousPosition = previousPositions.get(tile.id)
+      if (!previousPosition) {
+        return
+      }
+
+      const rowsMoved = Math.max(1, position.row - previousPosition.row)
+      motion.set(hashPosition(position), {
+        rowsMoved,
+        delayMs: (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS,
+        durationMs: FALL_BASE_DURATION_MS + (rowsMoved - 1) * FALL_DURATION_PER_ROW_MS,
+      })
+    })
+
+    return motion
+  }, [activeStep, previousStep])
+  const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
 
   useEffect(() => {
     return () => {
@@ -247,6 +346,7 @@ export function LexplosionApp({
             midY: (y1 + y2) / 2,
             angle: (Math.atan2(deltaRow, deltaCol) * 180) / Math.PI,
             variant,
+            delayMs: variant === 'event' ? (index + 1) * CLEAR_WAVE_STAGGER_MS : 0,
           })
         }
       })
@@ -262,12 +362,15 @@ export function LexplosionApp({
       return buildSegments([invalidPath], 'invalid')
     }
 
-    const clearGroups = displayedClearWordDetails
-      .filter((word) => word.positions.length > 1)
-      .map((word) => word.positions)
+    const clearGroups =
+      activeStep?.phase === 'clear'
+        ? displayedClearWordDetails
+            .filter((word) => word.positions.length > 1)
+            .map((word) => word.positions)
+        : []
 
     return clearGroups.length > 0 ? buildSegments(clearGroups, 'event') : []
-  }, [displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
+  }, [activeStep?.phase, displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
 
   const floatingLabels = useMemo(() => {
     if (displayedClearWordDetails.length === 0 || !visibleClearStep) {
@@ -291,7 +394,8 @@ export function LexplosionApp({
         x: (center.x / count / colCount) * 100,
         y: (center.y / count / rowCount) * 100,
         text: word.word,
-        variant: 'word',
+        variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
+        delayMs: 0,
       }
     })
 
@@ -310,7 +414,8 @@ export function LexplosionApp({
         x: scoreCenter.x / wordLabels.length,
         y: Math.max(8, scoreCenter.y / wordLabels.length - 15),
         text: `+${visibleClearStep.scoreDelta}`,
-        variant: 'score',
+        variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
+        delayMs: FLOAT_SCORE_DELAY_MS,
       },
     ]
   }, [displayBoard, displayedClearWordDetails, visibleClearStep])
@@ -512,6 +617,7 @@ export function LexplosionApp({
           '--float-word-duration': `${FLOAT_WORD_DURATION_MS}ms`,
           '--float-score-duration': `${FLOAT_SCORE_DURATION_MS}ms`,
           '--score-pulse-duration': `${SCORE_PULSE_DURATION_MS}ms`,
+          '--fall-land-bounce': `${FALL_LAND_BOUNCE_PX}px`,
         } as CSSProperties
       }
     >
@@ -537,11 +643,11 @@ export function LexplosionApp({
               {game.score}
             </strong>
           </div>
-          <div className="status-pill">
+          <div className="status-pill status-pill--compact">
             <span>Turn</span>
             <strong>{game.turn}</strong>
           </div>
-          <div className="status-pill">
+          <div className="status-pill status-pill--compact">
             <span>Cleared</span>
             <strong>{game.totalWordsCleared}</strong>
           </div>
@@ -550,7 +656,10 @@ export function LexplosionApp({
         <section className="board-panel">
           <div className="board-panel__header">
             <p className="board-panel__status">{runtimeStatusMessage}</p>
-            <div className="combo-badge" data-phase={activeStep?.phase ?? 'idle'}>
+            <div
+              className={`combo-badge${isAutoClearVisible ? ' combo-badge--auto' : ''}`}
+              data-phase={activeStep?.phase ?? 'idle'}
+            >
               {activeStep ? formatCombo(activeStep.combo) : formatCombo(game.combo)}
             </div>
           </div>
@@ -577,7 +686,16 @@ export function LexplosionApp({
                 return (
                   <g key={segment.key}>
                     <line
-                      className="board__segment-outline"
+                      className={
+                        segment.variant === 'event'
+                          ? 'board__segment-outline board__segment-outline--event'
+                          : 'board__segment-outline'
+                      }
+                      style={
+                        segment.variant === 'event'
+                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
+                          : undefined
+                      }
                       x1={segment.x1}
                       x2={segment.x2}
                       y1={segment.y1}
@@ -586,19 +704,38 @@ export function LexplosionApp({
                     <line
                       className={`board__segment board__segment--${segment.variant}`}
                       data-testid={`overlay-${segment.variant}`}
+                      style={
+                        segment.variant === 'event'
+                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
+                          : undefined
+                      }
                       x1={segment.x1}
                       x2={segment.x2}
                       y1={segment.y1}
                       y2={segment.y2}
                     />
                     <path
-                      className="board__arrow-outline"
+                      className={
+                        segment.variant === 'event'
+                          ? 'board__arrow-outline board__arrow-outline--event'
+                          : 'board__arrow-outline'
+                      }
                       d={arrowPath}
+                      style={
+                        segment.variant === 'event'
+                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
+                          : undefined
+                      }
                       transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
                     />
                     <path
                       className={`board__arrow board__arrow--${segment.variant}`}
                       d={arrowPath}
+                      style={
+                        segment.variant === 'event'
+                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
+                          : undefined
+                      }
                       transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
                     />
                   </g>
@@ -609,7 +746,13 @@ export function LexplosionApp({
               <div
                 className={`board__float board__float--${label.variant}`}
                 key={label.key}
-                style={{ left: `${label.x}%`, top: `${label.y}%` }}
+                style={
+                  {
+                    left: `${label.x}%`,
+                    top: `${label.y}%`,
+                    '--float-delay': `${label.delayMs}ms`,
+                  } as CSSProperties
+                }
               >
                 {label.text}
               </div>
@@ -620,6 +763,7 @@ export function LexplosionApp({
                 const positionKey = hashPosition(position)
                 const stateClasses = [
                   'tile',
+                  !tile ? 'tile--empty' : '',
                   highlightedPositions.selected.has(positionKey) ? 'tile--selected' : '',
                   highlightedPositions.invalid.has(positionKey) ? 'tile--invalid' : '',
                   highlightedPositions.cleared.has(positionKey) ? 'tile--clearing' : '',
@@ -628,6 +772,18 @@ export function LexplosionApp({
                 ]
                   .filter(Boolean)
                   .join(' ')
+                const clearDelay = clearDelayMap.get(positionKey) ?? 0
+                const fallMotion = fallMotionMap.get(positionKey)
+                const tileStyle =
+                  highlightedPositions.cleared.has(positionKey) ||
+                  highlightedPositions.moved.has(positionKey)
+                    ? ({
+                        '--clear-delay': `${clearDelay}ms`,
+                        '--fall-delay': `${fallMotion?.delayMs ?? 0}ms`,
+                        '--fall-duration': `${fallMotion?.durationMs ?? FALL_BASE_DURATION_MS}ms`,
+                        '--fall-distance-rows': `${fallMotion?.rowsMoved ?? 1}`,
+                      } as CSSProperties)
+                    : undefined
 
                 return (
                   <button
@@ -639,8 +795,12 @@ export function LexplosionApp({
                     disabled={inputLocked || !tile}
                     key={`${rowIndex}-${colIndex}`}
                     onPointerDown={(event) => handleTilePointerDown(event, position)}
+                    style={tileStyle}
                     type="button"
                   >
+                    {highlightedPositions.selected.has(positionKey) ? (
+                      <span className="tile__order">{selectedOrderMap.get(positionKey)}</span>
+                    ) : null}
                     <span>{tile?.letter ?? ''}</span>
                   </button>
                 )

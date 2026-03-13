@@ -3,6 +3,8 @@
   --float-word-duration: 1800ms;
   --float-score-duration: 2100ms;
   --score-pulse-duration: 900ms;
+  --board-gap: 0.35rem;
+  --fall-land-bounce: 3px;
   min-height: 100vh;
   padding: 1rem;
   color: var(--ink);
@@ -19,13 +21,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  margin-bottom: 0.9rem;
+  margin-bottom: 0.72rem;
 }
 
 .app__header h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.9rem;
+  font-size: 1.65rem;
   line-height: 1;
   letter-spacing: 0.02em;
 }
@@ -41,8 +43,8 @@
   border-radius: 0.5rem;
   background: #121213;
   color: var(--ink);
-  padding: 0.45rem 0.7rem;
-  font-size: 0.82rem;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
@@ -50,15 +52,19 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.45rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.68rem;
 }
 
 .status-pill {
   border: 1px solid #3a3a3c;
   border-radius: 0.65rem;
   background: #121213;
-  padding: 0.55rem 0.45rem;
+  padding: 0.48rem 0.4rem;
   text-align: center;
+}
+
+.status-pill--compact {
+  padding: 0.44rem 0.32rem;
 }
 
 .status-pill span,
@@ -74,7 +80,7 @@
 .status-pill strong {
   display: block;
   margin-top: 0.18rem;
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .status-pill__value--pulse {
@@ -128,11 +134,16 @@
   border-color: #818384;
 }
 
+.combo-badge--auto {
+  border-color: #5da47f;
+  color: #d4ffe0;
+}
+
 .board {
   position: relative;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.35rem;
+  gap: var(--board-gap);
   aspect-ratio: 1;
   margin: 0.8rem 0;
   padding: 0;
@@ -191,6 +202,7 @@
   font-size: 1.05rem;
   font-weight: 800;
   animation: clear-word-float var(--float-word-duration) ease forwards;
+  animation-delay: var(--float-delay, 0ms);
 }
 
 .board__float--score {
@@ -200,6 +212,27 @@
   font-size: 1.02rem;
   font-weight: 800;
   animation: clear-score-float var(--float-score-duration) ease forwards;
+  animation-delay: var(--float-delay, 0ms);
+}
+
+.board__float--auto-word {
+  background: rgba(12, 37, 27, 0.96);
+  border-color: #2f7b58;
+  color: #d7ffea;
+  font-size: 1.05rem;
+  font-weight: 800;
+  animation: clear-word-float var(--float-word-duration) ease forwards;
+  animation-delay: var(--float-delay, 0ms);
+}
+
+.board__float--auto-score {
+  background: rgba(14, 54, 33, 0.96);
+  border-color: #348259;
+  color: #d7ffea;
+  font-size: 1.02rem;
+  font-weight: 800;
+  animation: clear-score-float var(--float-score-duration) ease forwards;
+  animation-delay: var(--float-delay, 0ms);
 }
 
 .board__segment {
@@ -227,6 +260,8 @@
 
 .board__segment--event {
   stroke: rgb(122, 213, 150);
+  animation: segment-clear-fade var(--tile-clear-duration) ease forwards;
+  animation-delay: var(--segment-delay, 0ms);
 }
 
 .board__arrow {
@@ -254,6 +289,14 @@
 
 .board__arrow--event {
   stroke: rgb(122, 213, 150);
+  animation: segment-clear-fade var(--tile-clear-duration) ease forwards;
+  animation-delay: var(--segment-delay, 0ms);
+}
+
+.board__segment-outline--event,
+.board__arrow-outline--event {
+  animation: segment-clear-fade var(--tile-clear-duration) ease forwards;
+  animation-delay: var(--segment-delay, 0ms);
 }
 
 .tile {
@@ -280,9 +323,29 @@
   transform: translateY(0.02em);
 }
 
+.tile__order {
+  position: absolute;
+  top: 0.14rem;
+  left: 0.16rem;
+  min-width: 1rem;
+  padding: 0.05rem 0.14rem;
+  border-radius: 999px;
+  background: rgba(248, 248, 248, 0.14);
+  color: #f8f8f8;
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
 .tile:disabled {
   opacity: 1;
   cursor: default;
+}
+
+.tile--empty {
+  border-color: #2d2d31;
+  background: #0f0f10;
+  color: transparent;
 }
 
 .tile--selected {
@@ -303,6 +366,7 @@
 
 .tile--clearing {
   animation: tile-pop var(--tile-clear-duration) ease forwards;
+  animation-delay: var(--clear-delay, 0ms);
   background: #13261a;
   border-color: #4fb06e;
   color: #d4ffe0;
@@ -310,12 +374,12 @@
 }
 
 .tile--falling {
-  animation: tile-drop 440ms cubic-bezier(0.16, 0.8, 0.24, 1);
+  animation: tile-drop var(--fall-duration, 260ms) cubic-bezier(0.2, 0.82, 0.24, 1) both;
+  animation-delay: var(--fall-delay, 0ms);
 }
 
 .tile--spawning {
-  animation: tile-spawn 220ms ease;
-  border-color: #565758;
+  animation: tile-spawn 260ms cubic-bezier(0.16, 0.8, 0.24, 1);
 }
 
 .board-panel__footer {
@@ -340,31 +404,37 @@
 @keyframes tile-pop {
   0% {
     transform: scale(1);
-    opacity: 1;
-    box-shadow: 0 0 0 rgba(79, 176, 110, 0);
+    box-shadow: 0 0 8px rgba(79, 176, 110, 0.18);
   }
-  20% {
-    transform: scale(1.12) rotate(-2deg);
-    box-shadow: 0 0 10px rgba(79, 176, 110, 0.3);
+  16% {
+    transform: scale(1.04);
+    box-shadow: 0 0 14px rgba(79, 176, 110, 0.28);
   }
-  55% {
-    transform: scale(1.18) rotate(3deg);
-    opacity: 1;
-    box-shadow: 0 0 18px rgba(79, 176, 110, 0.45);
+  34% {
+    transform: scale(1.14);
+    box-shadow: 0 0 18px rgba(79, 176, 110, 0.42);
+  }
+  56% {
+    transform: scale(1.08);
+    box-shadow: 0 0 18px rgba(79, 176, 110, 0.42);
   }
   100% {
-    transform: scale(0.28) rotate(-14deg);
-    opacity: 0;
+    transform: scale(1);
+    background: #0f0f10;
+    border-color: #2d2d31;
+    color: transparent;
     box-shadow: 0 0 0 rgba(79, 176, 110, 0);
   }
 }
 
 @keyframes tile-drop {
   0% {
-    transform: translateY(-18px);
+    transform: translateY(
+      calc(var(--fall-distance-rows, 1) * (-100% - var(--board-gap)))
+    );
   }
-  70% {
-    transform: translateY(2px);
+  82% {
+    transform: translateY(var(--fall-land-bounce));
   }
   100% {
     transform: translateY(0);
@@ -396,12 +466,10 @@
 
 @keyframes tile-spawn {
   0% {
-    transform: translateY(-18px) scale(0.9);
-    opacity: 0;
+    transform: translateY(-12px);
   }
   100% {
-    transform: translateY(0) scale(1);
-    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -457,5 +525,17 @@
   }
   100% {
     transform: scale(1);
+  }
+}
+
+@keyframes segment-clear-fade {
+  0% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
   }
 }
