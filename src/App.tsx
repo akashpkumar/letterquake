@@ -119,6 +119,7 @@ interface FloatingLabel {
   text: string
   variant: 'word' | 'score' | 'auto-word' | 'auto-score'
   delayMs: number
+  driftX: number
 }
 
 interface MotionSpec {
@@ -149,13 +150,7 @@ function renderTileIdentity(tile: Tile) {
   }
 
   if (tile.kind === 'anchor') {
-    return (
-      <>
-        <span aria-hidden="true" className="tile__identity tile__identity--anchor">
-          <span className="tile__badge tile__badge--anchor" />
-        </span>
-      </>
-    )
+    return <span aria-hidden="true" className="tile__identity tile__identity--anchor" />
   }
 
   return null
@@ -402,9 +397,11 @@ export function LexplosionApp({
     return motion
   }, [activeStep, previousStep])
   const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
+  const clearImpactActive = activeStep?.phase === 'clear'
   const boardClassName = [
     'board',
     activeStep?.phase === 'clear' ? 'board--shake' : '',
+    clearImpactActive ? 'board--impact' : '',
     activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
     inputLocked ? 'board--locked' : '',
   ]
@@ -666,6 +663,7 @@ export function LexplosionApp({
         text: word.word,
         variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
         delayMs: 0,
+        driftX: (index % 2 === 0 ? -1 : 1) * 12,
       }
     })
 
@@ -686,6 +684,7 @@ export function LexplosionApp({
         text: `+${visibleClearStep.scoreDelta}`,
         variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
         delayMs: FLOAT_SCORE_DELAY_MS,
+        driftX: 0,
       },
     ]
   }, [displayBoard, displayedClearWordDetails, visibleClearStep])
@@ -1080,7 +1079,7 @@ export function LexplosionApp({
           </div>
         ) : null}
 
-        <section className="board-panel">
+        <section className={`board-panel${clearImpactActive ? ' board-panel--impact' : ''}`}>
           <div
             className={`event-banner${activeStep ? ` event-banner--${activeStep.phase}` : ''}${isAutoClearVisible ? ' event-banner--auto' : ''}${visibleClearStep ? ' event-banner--pulse' : ''}`}
           >
@@ -1174,6 +1173,7 @@ export function LexplosionApp({
                     left: `${label.x}%`,
                     top: `${label.y}%`,
                     '--float-delay': `${label.delayMs}ms`,
+                    '--float-drift-x': `${label.driftX}px`,
                   } as CSSProperties
                 }
               >
