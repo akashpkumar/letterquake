@@ -270,4 +270,42 @@ describe('LexplosionApp', () => {
 
     expect(screen.getByText('Board shuffled for -75.')).toBeInTheDocument()
   })
+
+  it('shows special tile rules in help and renders special tile markers', () => {
+    const game = createGame({
+      seed: 7,
+      board: makeBoardFromRows(
+        [
+          'CATQZX',
+          'RLMNVB',
+          'SPTUWE',
+          'ODGHIK',
+          'YJBCDF',
+          'EGHIRT',
+        ],
+        [
+          { position: { row: 0, col: 0 }, kind: 'gold' },
+          { position: { row: 0, col: 1 }, kind: 'cracked' },
+          { position: { row: 0, col: 2 }, kind: 'anchor' },
+        ],
+      ),
+    })
+
+    render(
+      <LexplosionApp
+        initialGame={game}
+        stepDurations={{ clear: 1, 'pause-clear': 1, gravity: 1, 'pause-refill': 1, refill: 1 }}
+      />,
+    )
+
+    expect(document.querySelector('.tile__block--kind-gold')).not.toBeNull()
+    expect(document.querySelector('.tile__block--kind-cracked')).not.toBeNull()
+    expect(document.querySelector('.tile__block--kind-anchor')).not.toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open help' }))
+
+    expect(screen.getByText(/Gold: Adds bonus points/i)).toBeInTheDocument()
+    expect(screen.getByText(/Cracked: Needs two valid word hits/i)).toBeInTheDocument()
+    expect(screen.getByText(/Anchor: Stays fixed during gravity/i)).toBeInTheDocument()
+  })
 })

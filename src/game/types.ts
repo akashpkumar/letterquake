@@ -3,9 +3,17 @@ export interface Position {
   col: number
 }
 
+export type TileKind = 'normal' | 'gold' | 'cracked' | 'anchor'
+
+export interface TileState {
+  durability?: number
+}
+
 export interface Tile {
   id: string
   letter: string
+  kind: TileKind
+  state?: TileState
 }
 
 export type Board = Array<Array<Tile | null>>
@@ -22,7 +30,9 @@ export interface TurnStep {
   phase: TurnPhase
   board: Board
   words: FoundWord[]
+  matchedPositions: Position[]
   clearedPositions: Position[]
+  retainedPositions: Position[]
   movedPositions: Position[]
   spawnedPositions: Position[]
   combo: number

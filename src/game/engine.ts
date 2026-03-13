@@ -9,6 +9,7 @@ import {
   TARGET_EASY_WORDS,
 } from './constants'
 import { COMMON_WORDS, DICTIONARY_SET } from './dictionary'
+import { getTileDefinition, TILE_DEFINITIONS } from './tileRegistry'
 import type {
   Board,
   CreateGameOptions,
@@ -17,6 +18,7 @@ import type {
   Position,
   ResolutionResult,
   Tile,
+  TileKind,
   TurnResult,
   TurnStep,
 } from './types'
@@ -28,9 +30,23 @@ const HARSH_CONSONANTS = new Set(['J', 'Q', 'V', 'X', 'Z'])
 
 let tileSequence = 0
 
-function makeTile(letter: string): Tile {
+function makeTile(letter: string, kind: TileKind = 'normal'): Tile {
   tileSequence += 1
-  return { id: `tile-${tileSequence}`, letter }
+  const definition = getTileDefinition(kind)
+
+  return {
+    id: `tile-${tileSequence}`,
+    letter,
+    kind,
+    state: definition.createState?.(),
+  }
+}
+
+function cloneTileWithLetter(tile: Tile, letter: string): Tile {
+  return {
+    ...tile,
+    letter,
+  }
 }
 
 function clonePosition(position: Position): Position {
@@ -39,6 +55,18 @@ function clonePosition(position: Position): Position {
 
 function hashPosition(position: Position): string {
   return `${position.row}:${position.col}`
+}
+
+function collectUniquePositions(words: FoundWord[]): Position[] {
+  const positions = new Map<string, Position>()
+
+  words.forEach((word) => {
+    word.positions.forEach((position) => {
+      positions.set(hashPosition(position), clonePosition(position))
+    })
+  })
+
+  return [...positions.values()]
 }
 
 function nextSeed(seed: number): number {
@@ -87,14 +115,41 @@ function scoreWord(length: number, combo: number): number {
   return length * length * 10 * combo
 }
 
+function scoreFoundWord(board: Board, word: FoundWord, combo: number): number {
+  const bonus = word.positions.reduce((total, position) => {
+    const tile = board[position.row][position.col]
+    if (!tile) {
+      return total
+    }
+
+    return total + (getTileDefinition(tile.kind).scoreBonus ?? 0)
+  }, 0)
+
+  return scoreWord(word.word.length, combo) + bonus * combo
+}
+
 export function cloneBoard(board: Board): Board {
   return board.map((row) => row.map((tile) => (tile ? { ...tile } : null)))
 }
 
-export function makeBoardFromRows(rows: string[]): Board {
-  return rows.map((row) =>
+export function makeBoardFromRows(
+  rows: string[],
+  specialTiles: Array<{ position: Position; kind: TileKind }> = [],
+): Board {
+  const board = rows.map((row) =>
     row.split('').map((letter) => (letter === '.' ? null : makeTile(letter))),
   )
+
+  specialTiles.forEach(({ position, kind }) => {
+    const tile = board[position.row]?.[position.col]
+    if (!tile) {
+      return
+    }
+
+    board[position.row][position.col] = makeTile(tile.letter, kind)
+  })
+
+  return board
 }
 
 export function boardToRows(board: Board): string[] {
@@ -225,27 +280,35 @@ export function findStraightWords(board: Board): FoundWord[] {
   return found
 }
 
-function removeWord(board: Board, word: FoundWord): { board: Board; cleared: Position[] } {
+function resolveWordHit(
+  board: Board,
+  words: FoundWord[],
+): { board: Board; cleared: Position[]; retained: Position[]; matched: Position[] } {
   const nextBoard = cloneBoard(board)
-  word.positions.forEach((position) => {
-    nextBoard[position.row][position.col] = null
+  const matched = collectUniquePositions(words)
+  const cleared: Position[] = []
+  const retained: Position[] = []
+
+  matched.forEach((position) => {
+    const tile = nextBoard[position.row][position.col]
+    if (!tile) {
+      return
+    }
+
+    const resolution = getTileDefinition(tile.kind).onWordHit?.(tile) ?? {
+      tile: null,
+      removed: true,
+    }
+
+    nextBoard[position.row][position.col] = resolution.tile
+    if (resolution.removed) {
+      cleared.push(clonePosition(position))
+    } else {
+      retained.push(clonePosition(position))
+    }
   })
-  return { board: nextBoard, cleared: word.positions.map(clonePosition) }
-}
 
-function removeWords(board: Board, words: FoundWord[]): { board: Board; cleared: Position[] } {
-  const nextBoard = cloneBoard(board)
-  const clearedMap = new Map<string, Position>()
-
-  words.forEach((word) => {
-    word.positions.forEach((position) => {
-      const key = hashPosition(position)
-      nextBoard[position.row][position.col] = null
-      clearedMap.set(key, clonePosition(position))
-    })
-  })
-
-  return { board: nextBoard, cleared: [...clearedMap.values()] }
+  return { board: nextBoard, cleared, retained, matched }
 }
 
 function filterWordsTouchingPositions(
@@ -271,6 +334,19 @@ function applyGravity(board: Board): { board: Board; moved: Position[] } {
     for (let row = board.length - 1; row >= 0; row -= 1) {
       const tile = board[row][col]
       if (!tile) {
+        continue
+      }
+
+       if (getTileDefinition(tile.kind).blocksGravity) {
+        nextBoard[row][col] = tile
+        targetRow = row - 1
+        continue
+      }
+
+      while (targetRow >= 0 && nextBoard[targetRow][col] !== null) {
+        targetRow -= 1
+      }
+      if (targetRow < 0) {
         continue
       }
 
@@ -408,6 +484,50 @@ function chooseRefillLetter(board: Board, row: number, col: number, seed: number
   return [bestLetter, currentSeed]
 }
 
+function countTileKinds(board: Board): Record<TileKind, number> {
+  const counts = {
+    normal: 0,
+    gold: 0,
+    cracked: 0,
+    anchor: 0,
+  } satisfies Record<TileKind, number>
+
+  board.forEach((row) => {
+    row.forEach((tile) => {
+      if (tile) {
+        counts[tile.kind] += 1
+      }
+    })
+  })
+
+  return counts
+}
+
+function pickWeightedTileKind(board: Board, seed: number): [TileKind, number] {
+  const counts = countTileKinds(board)
+  const candidates = (Object.values(TILE_DEFINITIONS) as Array<(typeof TILE_DEFINITIONS)[TileKind]>)
+    .filter((definition) => {
+      if (definition.maxOnBoard === undefined) {
+        return true
+      }
+
+      return counts[definition.kind] < definition.maxOnBoard
+    })
+
+  const totalWeight = candidates.reduce((sum, definition) => sum + definition.spawnWeight, 0)
+  const [roll, updatedSeed] = randomFloat(seed)
+  let threshold = roll * totalWeight
+
+  for (const definition of candidates) {
+    threshold -= definition.spawnWeight
+    if (threshold <= 0) {
+      return [definition.kind, updatedSeed]
+    }
+  }
+
+  return [candidates[candidates.length - 1]?.kind ?? 'normal', updatedSeed]
+}
+
 function refillBoard(board: Board, seed: number): { board: Board; spawned: Position[]; seed: number } {
   const nextBoard = cloneBoard(board)
   const spawned: Position[] = []
@@ -420,8 +540,9 @@ function refillBoard(board: Board, seed: number): { board: Board; spawned: Posit
       }
 
       const [letter, updatedSeed] = chooseRefillLetter(nextBoard, row, col, currentSeed)
-      currentSeed = updatedSeed
-      nextBoard[row][col] = makeTile(letter)
+      const [kind, kindSeed] = pickWeightedTileKind(nextBoard, updatedSeed)
+      currentSeed = kindSeed
+      nextBoard[row][col] = makeTile(letter, kind)
       spawned.push({ row, col })
     }
   }
@@ -444,7 +565,8 @@ function overlayWord(
   word.split('').forEach((letter, index) => {
     const row = orientation === 'horizontal' ? start.row : start.row + index
     const col = orientation === 'horizontal' ? start.col + index : start.col
-    nextBoard[row][col] = makeTile(letter)
+    const existingTile = nextBoard[row][col]
+    nextBoard[row][col] = existingTile ? cloneTileWithLetter(existingTile, letter) : makeTile(letter)
   })
 
   return nextBoard
@@ -528,22 +650,26 @@ function resolveGravityCombos(
       break
     }
 
+    const matchedPositions = collectUniquePositions(words)
+
     highestCombo = Math.max(highestCombo, combo)
     clearedWords.push(...words.map((word) => word.word))
     totalWordsCleared += words.length
 
     const clearScore = words.reduce(
-      (sum, word) => sum + scoreWord(word.word.length, combo),
+      (sum, word) => sum + scoreFoundWord(nextBoard, word, combo),
       0,
     )
     scoreDelta += clearScore
 
-    const { board: clearedBoard, cleared } = removeWords(nextBoard, words)
+    const { board: clearedBoard, cleared, retained } = resolveWordHit(nextBoard, words)
     steps.push({
       phase: 'clear',
       board: cloneBoard(nextBoard),
       words,
+      matchedPositions,
       clearedPositions: cleared,
+      retainedPositions: retained,
       movedPositions: [],
       spawnedPositions: [],
       combo,
@@ -553,7 +679,9 @@ function resolveGravityCombos(
       phase: 'pause-clear',
       board: cloneBoard(clearedBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: [],
       spawnedPositions: [],
       combo,
@@ -565,7 +693,9 @@ function resolveGravityCombos(
       phase: 'gravity',
       board: cloneBoard(gravityBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: moved,
       spawnedPositions: [],
       combo,
@@ -575,7 +705,9 @@ function resolveGravityCombos(
       phase: 'pause-refill',
       board: cloneBoard(gravityBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: [],
       spawnedPositions: [],
       combo,
@@ -608,16 +740,18 @@ export function resolveSelectedWord(
     positions: selection.map(clonePosition),
   }
 
-  const { board: clearedBoard, cleared } = removeWord(board, resolvedWord)
+  const { board: clearedBoard, cleared, retained, matched } = resolveWordHit(board, [resolvedWord])
   const { board: gravityBoard, moved } = applyGravity(clearedBoard)
-  const scoreDelta = scoreWord(word.length, 1)
+  const scoreDelta = scoreFoundWord(board, resolvedWord, 1)
 
   const steps: TurnStep[] = [
     {
       phase: 'clear',
       board: cloneBoard(board),
       words: [resolvedWord],
+      matchedPositions: matched,
       clearedPositions: cleared,
+      retainedPositions: retained,
       movedPositions: [],
       spawnedPositions: [],
       combo: 1,
@@ -627,7 +761,9 @@ export function resolveSelectedWord(
       phase: 'pause-clear',
       board: cloneBoard(clearedBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: [],
       spawnedPositions: [],
       combo: 1,
@@ -637,7 +773,9 @@ export function resolveSelectedWord(
       phase: 'gravity',
       board: cloneBoard(gravityBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: moved,
       spawnedPositions: [],
       combo: 1,
@@ -647,7 +785,9 @@ export function resolveSelectedWord(
       phase: 'pause-refill',
       board: cloneBoard(gravityBoard),
       words: [],
+      matchedPositions: [],
       clearedPositions: [],
+      retainedPositions: [],
       movedPositions: [],
       spawnedPositions: [],
       combo: 1,
@@ -664,7 +804,9 @@ export function resolveSelectedWord(
     phase: 'refill',
     board: cloneBoard(injectedRefill.board),
     words: [],
+    matchedPositions: [],
     clearedPositions: [],
+    retainedPositions: [],
     movedPositions: [],
     spawnedPositions: spawned,
     combo: Math.max(1, comboResult.highestCombo),

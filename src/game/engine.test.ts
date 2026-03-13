@@ -135,6 +135,125 @@ describe('engine', () => {
     expect(result.board.flat().every((tile) => tile !== null)).toBe(true)
   })
 
+  it('adds bonus score when a gold tile is used', () => {
+    const board = makeBoardFromRows(
+      [
+        'CATQZX',
+        'RLMNVB',
+        'SPTUWE',
+        'ODGHIK',
+        'YJBCDF',
+        'EGHIRT',
+      ],
+      [{ position: { row: 0, col: 1 }, kind: 'gold' }],
+    )
+
+    const result = resolveSelectedWord(
+      board,
+      [
+        { row: 0, col: 0 },
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+      ],
+      23,
+    )
+
+    expect(result.scoreDelta).toBeGreaterThan(90)
+  })
+
+  it('keeps cracked tiles on the board after the first hit and breaks them on the second', () => {
+    const board = makeBoardFromRows(
+      [
+        'CATQZX',
+        'RLMNVB',
+        'SPTUWE',
+        'ODGHIK',
+        'YJBCDF',
+        'EGHIRT',
+      ],
+      [{ position: { row: 0, col: 1 }, kind: 'cracked' }],
+    )
+
+    const first = resolveSelectedWord(
+      board,
+      [
+        { row: 0, col: 0 },
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+      ],
+      23,
+    )
+
+    expect(first.steps[0].retainedPositions).toEqual([{ row: 0, col: 1 }])
+    expect(first.steps[0].clearedPositions).toEqual([
+      { row: 0, col: 0 },
+      { row: 0, col: 2 },
+    ])
+    expect(first.steps[1].board[0][1]?.kind).toBe('cracked')
+    expect(first.steps[1].board[0][1]?.state?.durability).toBe(1)
+
+    const secondBoard = makeBoardFromRows(
+      [
+        'CATQZX',
+        'RLMNVB',
+        'SPTUWE',
+        'ODGHIK',
+        'YJBCDF',
+        'EGHIRT',
+      ],
+      [{ position: { row: 0, col: 1 }, kind: 'cracked' }],
+    )
+    secondBoard[0][1] = {
+      ...secondBoard[0][1]!,
+      state: { durability: 1 },
+    }
+
+    const second = resolveSelectedWord(
+      secondBoard,
+      [
+        { row: 0, col: 0 },
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+      ],
+      23,
+    )
+
+    expect(second.steps[0].retainedPositions).toHaveLength(0)
+    expect(second.steps[0].clearedPositions).toEqual([
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+      { row: 0, col: 2 },
+    ])
+  })
+
+  it('keeps anchor tiles fixed while other letters fall around them', () => {
+    const board = makeBoardFromRows(
+      [
+        'A.....',
+        'B.....',
+        'CATQZX',
+        'D.....',
+        'E.....',
+        'F.....',
+      ],
+      [{ position: { row: 3, col: 0 }, kind: 'anchor' }],
+    )
+
+    const game = createGame({ seed: 7, board })
+    const result = submitSelection(game, [
+      { row: 2, col: 0 },
+      { row: 2, col: 1 },
+      { row: 2, col: 2 },
+    ])
+
+    expect(result.valid).toBe(true)
+    const gravityBoard = result.steps.find((step) => step.phase === 'gravity')?.board
+
+    expect(gravityBoard?.[3][0]?.kind).toBe('anchor')
+    expect(gravityBoard?.[2][0]?.letter).toBe('B')
+    expect(gravityBoard?.[1][0]?.letter).toBe('A')
+  })
+
   it('rejects selections that are not words', () => {
     const game = createGame({
       seed: 7,

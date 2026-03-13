@@ -419,6 +419,7 @@
 .tile__block {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
   border: 2px solid #3a3a3c;
@@ -430,6 +431,22 @@
   backface-visibility: hidden;
   will-change: transform, opacity;
   transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.tile__accent {
+  position: absolute;
+  top: 0.16rem;
+  right: 0.18rem;
+  min-width: 0.95rem;
+  padding: 0.04rem 0.15rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.54rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.85;
 }
 
 .tile__glyph {
@@ -451,10 +468,21 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-color: #2d2d31;
-  border: 2px solid #2d2d31;
+  z-index: 0;
+  border-color: #242426;
+  border: 1px solid #242426;
   border-radius: 0.45rem;
-  background: #0f0f10;
+  background: #09090a;
+}
+
+.tile--spawning-slot::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border: 1px solid #212124;
+  border-radius: 0.45rem;
+  background: #070708;
 }
 
 .tile__block--selected {
@@ -467,11 +495,19 @@
   transform: scale(1.04);
 }
 
+.tile__block--matched {
+  border-color: #5d8f6d;
+}
+
 .tile__block--invalid {
   animation: tile-nope 360ms ease;
   background: #2a1114;
   border-color: #c44b5a;
   color: #ffb7bf;
+}
+
+.tile__block--retained {
+  animation: tile-retain 520ms ease;
 }
 
 .tile__block--clearing {
@@ -501,6 +537,47 @@
     cubic-bezier(0.16, 0.68, 0.2, 1) both;
   animation-delay: var(--spawn-delay, 0ms);
   opacity: 0;
+}
+
+.tile__block--kind-gold {
+  border-color: #8d742b;
+  background: #17140d;
+  color: #ffe08f;
+}
+
+.tile__block--kind-gold .tile__accent {
+  color: #ffe08f;
+}
+
+.tile__block--kind-cracked {
+  border-color: #6f7479;
+  background: #151617;
+}
+
+.tile__block--kind-cracked::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  top: 18%;
+  width: 1px;
+  height: 54%;
+  background: #8b9094;
+  transform: rotate(22deg);
+  opacity: 0.7;
+}
+
+.tile__block--kind-cracked .tile__accent {
+  color: #d4d7da;
+}
+
+.tile__block--kind-anchor {
+  border-color: #4e6576;
+  background: #101417;
+  color: #d9eefb;
+}
+
+.tile__block--kind-anchor .tile__accent {
+  color: #a9d3ed;
 }
 
 .board-panel__footer {
@@ -609,6 +686,19 @@
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes tile-retain {
+  0% {
+    transform: scale(1);
+  }
+  26% {
+    transform: scale(1.06);
+    border-color: #d4d7da;
+  }
+  100% {
+    transform: scale(1);
   }
 }
 

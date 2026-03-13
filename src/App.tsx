@@ -34,6 +34,7 @@ import {
   TILE_CLEAR_ANIMATION_MS,
 } from './game/constants'
 import { createGame, shuffleGame, submitSelection } from './game/engine'
+import { getTileDefinition, STARTER_TILE_KINDS } from './game/tileRegistry'
 import type {
   FoundWord,
   GameState,
@@ -141,7 +142,9 @@ function buildIntroTurn(nextGame: GameState): TurnResult {
         phase: 'refill',
         board: nextGame.board,
         words: [],
+        matchedPositions: [],
         clearedPositions: [],
+        retainedPositions: [],
         movedPositions: [],
         spawnedPositions,
         combo: 0,
@@ -310,11 +313,13 @@ export function LexplosionApp({
   const highlightedPositions = useMemo(() => {
     const selected = new Set(game.selectedPath.map(hashPosition))
     const invalid = new Set(invalidPath.map(hashPosition))
+    const matched = new Set(activeStep?.matchedPositions.map(hashPosition) ?? [])
     const cleared = new Set(activeStep?.clearedPositions.map(hashPosition) ?? [])
+    const retained = new Set(activeStep?.retainedPositions.map(hashPosition) ?? [])
     const moved = new Set(activeStep?.movedPositions.map(hashPosition) ?? [])
     const spawned = new Set(activeStep?.spawnedPositions.map(hashPosition) ?? [])
 
-    return { selected, invalid, cleared, moved, spawned }
+    return { selected, invalid, matched, cleared, retained, moved, spawned }
   }, [activeStep, game.selectedPath, invalidPath])
   const selectedOrderMap = useMemo(() => {
     const order = new Map<string, number>()
@@ -850,6 +855,14 @@ export function LexplosionApp({
                 <li>Valid words explode and score points.</li>
                 <li>Blocks above fall down and new ones refill from the top.</li>
                 <li>Gravity can trigger bonus cascade clears automatically.</li>
+                {STARTER_TILE_KINDS.map((kind) => {
+                  const definition = getTileDefinition(kind)
+                  return (
+                    <li key={kind}>
+                      {definition.label}: {definition.description}
+                    </li>
+                  )
+                })}
                 <li>Shuffle rescues a bad board for {SHUFFLE_PENALTY} points.</li>
               </ul>
             </section>
@@ -963,19 +976,29 @@ export function LexplosionApp({
                 const stateClasses = [
                   'tile',
                   !tile ? 'tile--empty' : '',
+                  tile && highlightedPositions.spawned.has(positionKey)
+                    ? 'tile--spawning-slot'
+                    : '',
                 ]
                   .filter(Boolean)
                   .join(' ')
                 const blockClasses = [
                   'tile__block',
+                  tile ? getTileDefinition(tile.kind).uiClassName : '',
                   highlightedPositions.selected.has(positionKey)
                     ? 'tile__block--selected'
                     : '',
                   highlightedPositions.invalid.has(positionKey)
                     ? 'tile__block--invalid'
                     : '',
+                  highlightedPositions.matched.has(positionKey)
+                    ? 'tile__block--matched'
+                    : '',
                   highlightedPositions.cleared.has(positionKey)
                     ? 'tile__block--clearing'
+                    : '',
+                  highlightedPositions.retained.has(positionKey)
+                    ? 'tile__block--retained'
                     : '',
                   highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
                     ? 'tile__block--clearing-auto'
@@ -1007,7 +1030,7 @@ export function LexplosionApp({
 
                 return (
                   <button
-                    aria-label={`tile ${rowIndex + 1}-${colIndex + 1} ${tile?.letter ?? 'empty'}`}
+                    aria-label={`tile ${rowIndex + 1}-${colIndex + 1} ${tile?.letter ?? 'empty'}${tile ? ` ${getTileDefinition(tile.kind).label.toLowerCase()}` : ''}`}
                     className={stateClasses}
                     data-col={colIndex}
                     data-row={rowIndex}
@@ -1023,6 +1046,13 @@ export function LexplosionApp({
                         {highlightedPositions.selected.has(positionKey) ? (
                           <span className="tile__order">
                             {selectedOrderMap.get(positionKey)}
+                          </span>
+                        ) : null}
+                        {tile.kind !== 'normal' ? (
+                          <span className="tile__accent">
+                            {tile.kind === 'cracked'
+                              ? tile.state?.durability ?? 2
+                              : getTileDefinition(tile.kind).accentLabel}
                           </span>
                         ) : null}
                         <span className="tile__glyph">{tile.letter}</span>
