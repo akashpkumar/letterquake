@@ -4,6 +4,7 @@ import {
   startTransition,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -118,6 +119,12 @@ interface FloatingLabel {
   delayMs: number
 }
 
+interface MotionSpec {
+  delayMs: number
+  durationMs: number
+  rowsMoved: number
+}
+
 function createEmptyBoard(size: number) {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, () => null as GameState['board'][number][number]),
@@ -223,6 +230,7 @@ export function LexplosionApp({
   const isDraggingRef = useRef(false)
   const activePointerIdRef = useRef<number | null>(null)
   const boardRef = useRef<HTMLDivElement | null>(null)
+  const tileBlockRefs = useRef(new Map<string, HTMLSpanElement>())
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
 
@@ -329,10 +337,7 @@ export function LexplosionApp({
     return order
   }, [game.selectedPath])
   const fallMotionMap = useMemo(() => {
-    const motion = new Map<
-      string,
-      { rowsMoved: number; delayMs: number; durationMs: number }
-    >()
+    const motion = new Map<string, MotionSpec>()
 
     if (activeStep?.phase !== 'gravity' || !previousStep?.board) {
       return motion
@@ -367,17 +372,13 @@ export function LexplosionApp({
   const boardClassName = [
     'board',
     activeStep?.phase === 'clear' ? 'board--shake' : '',
-    activeStep?.phase === 'clear' && isAutoClearVisible ? 'board--auto-clear' : '',
     activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
     inputLocked ? 'board--locked' : '',
   ]
     .filter(Boolean)
     .join(' ')
   const spawnMotionMap = useMemo(() => {
-    const motion = new Map<
-      string,
-      { rowsMoved: number; delayMs: number; durationMs: number }
-    >()
+    const motion = new Map<string, MotionSpec>()
 
     if (activeStep?.phase !== 'refill') {
       return motion
@@ -398,7 +399,7 @@ export function LexplosionApp({
         .slice()
         .sort((left, right) => left.row - right.row)
         .forEach((position, spawnIndex) => {
-          const rowsMoved = spawnIndex + 1
+          const rowsMoved = position.row + 1
           motion.set(hashPosition(position), {
             rowsMoved,
             delayMs: spawnIndex * SPAWN_DELAY_PER_ROW_MS + col * SPAWN_COLUMN_SWEEP_MS,
@@ -447,6 +448,96 @@ export function LexplosionApp({
 
     return () => window.clearTimeout(timeoutId)
   }, [animationDurations, clearWaveDuration, pendingTurn, spawnMotionWindow, stepIndex])
+
+  useLayoutEffect(() => {
+    const boardElement = boardRef.current
+    const boardRect = boardElement?.getBoundingClientRect() ?? null
+    const boardStyle = boardElement ? window.getComputedStyle(boardElement) : null
+    const rowGap = boardStyle ? Number.parseFloat(boardStyle.rowGap || boardStyle.gap || '0') : 0
+    const colGap = boardStyle ? Number.parseFloat(boardStyle.columnGap || boardStyle.gap || '0') : 0
+    const rowCount = displayBoard.length || 1
+    const colCount = displayBoard[0]?.length ?? 1
+    const cellWidth = boardRect ? (boardRect.width - colGap * (colCount - 1)) / colCount : 0
+    const cellHeight = boardRect ? (boardRect.height - rowGap * (rowCount - 1)) / rowCount : 0
+    const cellPitchY = cellHeight + rowGap
+
+    if (activeStep?.phase === 'gravity' && boardRect) {
+      displayBoard.forEach((row, rowIndex) => {
+        row.forEach((tile, colIndex) => {
+          if (!tile) {
+            return
+          }
+
+          const element = tileBlockRefs.current.get(tile.id)
+          const motion = fallMotionMap.get(hashPosition({ row: rowIndex, col: colIndex }))
+
+          if (!element || !motion) {
+            return
+          }
+
+          element.getAnimations().forEach((animation) => animation.cancel())
+          element.animate(
+            [
+              { transform: `translate3d(0, ${-motion.rowsMoved * cellPitchY}px, 0)` },
+              { transform: 'translate3d(0, 0, 0)' },
+            ],
+            {
+              duration: motion.durationMs,
+              delay: motion.delayMs,
+              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+              fill: 'both',
+            },
+          )
+        })
+      })
+    }
+
+    if (activeStep?.phase === 'refill' && boardRect) {
+      displayBoard.forEach((row, rowIndex) => {
+        row.forEach((tile, colIndex) => {
+          if (!tile) {
+            return
+          }
+
+          const element = tileBlockRefs.current.get(tile.id)
+          const motion = spawnMotionMap.get(hashPosition({ row: rowIndex, col: colIndex }))
+
+          if (!element || !motion) {
+            return
+          }
+
+          const startY = -motion.rowsMoved * cellPitchY
+          const driftX = ((colIndex % 2 === 0 ? -1 : 1) * cellWidth) / 48
+
+          element.getAnimations().forEach((animation) => animation.cancel())
+          element.animate(
+            [
+              {
+                opacity: 0,
+                transform: `translate3d(${driftX}px, ${startY}px, 0)`,
+              },
+              {
+                opacity: 1,
+                offset: 0.18,
+                transform: `translate3d(${driftX * 0.45}px, ${startY * 0.72}px, 0)`,
+              },
+              {
+                opacity: 1,
+                offset: 1,
+                transform: 'translate3d(0, 0, 0)',
+              },
+            ],
+            {
+              duration: motion.durationMs,
+              delay: motion.delayMs,
+              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+              fill: 'both',
+            },
+          )
+        })
+      })
+    }
+  }, [activeStep?.phase, displayBoard, fallMotionMap, spawnMotionMap])
 
   useEffect(() => {
     return () => {
@@ -754,6 +845,15 @@ export function LexplosionApp({
     startSelection(position)
   }
 
+  function setTileBlockRef(tileId: string, node: HTMLSpanElement | null) {
+    if (node) {
+      tileBlockRefs.current.set(tileId, node)
+      return
+    }
+
+    tileBlockRefs.current.delete(tileId)
+  }
+
   return (
     <main
       className="shell"
@@ -1003,30 +1103,13 @@ export function LexplosionApp({
                   highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
                     ? 'tile__block--clearing-auto'
                     : '',
-                  highlightedPositions.moved.has(positionKey) ? 'tile__block--falling' : '',
-                  highlightedPositions.spawned.has(positionKey)
-                    ? 'tile__block--spawning'
-                    : '',
                 ]
                   .filter(Boolean)
                   .join(' ')
                 const clearDelay = clearDelayMap.get(positionKey) ?? 0
-                const fallMotion = fallMotionMap.get(positionKey)
-                const spawnMotion = spawnMotionMap.get(positionKey)
-                const tileStyle =
-                  highlightedPositions.cleared.has(positionKey) ||
-                  highlightedPositions.moved.has(positionKey) ||
-                  highlightedPositions.spawned.has(positionKey)
-                    ? ({
-                        '--clear-delay': `${clearDelay}ms`,
-                        '--fall-delay': `${fallMotion?.delayMs ?? 0}ms`,
-                        '--fall-duration': `${fallMotion?.durationMs ?? FALL_BASE_DURATION_MS}ms`,
-                        '--fall-distance-rows': `${fallMotion?.rowsMoved ?? 1}`,
-                        '--spawn-delay': `${spawnMotion?.delayMs ?? 0}ms`,
-                        '--spawn-duration': `${spawnMotion?.durationMs ?? SPAWN_BASE_DURATION_MS}ms`,
-                        '--spawn-distance-rows': `${spawnMotion?.rowsMoved ?? 1}`,
-                      } as CSSProperties)
-                    : undefined
+                const tileStyle = highlightedPositions.cleared.has(positionKey)
+                  ? ({ '--clear-delay': `${clearDelay}ms` } as CSSProperties)
+                  : undefined
 
                 return (
                   <button
@@ -1042,7 +1125,11 @@ export function LexplosionApp({
                     type="button"
                   >
                     {tile ? (
-                      <span className={blockClasses} style={tileStyle}>
+                      <span
+                        className={blockClasses}
+                        ref={(node) => setTileBlockRef(tile.id, node)}
+                        style={tileStyle}
+                      >
                         {highlightedPositions.selected.has(positionKey) ? (
                           <span className="tile__order">
                             {selectedOrderMap.get(positionKey)}

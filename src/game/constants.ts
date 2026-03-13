@@ -15,15 +15,15 @@ export const FLOAT_WORD_DURATION_MS = 1800
 export const FLOAT_SCORE_DURATION_MS = 2100
 export const FLOAT_SCORE_DELAY_MS = 320
 export const SCORE_PULSE_DURATION_MS = 900
-export const FALL_BASE_DURATION_MS = 300
-export const FALL_DURATION_PER_ROW_MS = 64
-export const FALL_DELAY_PER_ROW_MS = 26
-export const FALL_COLUMN_SWEEP_MS = 30
+export const FALL_BASE_DURATION_MS = 220
+export const FALL_DURATION_PER_ROW_MS = 36
+export const FALL_DELAY_PER_ROW_MS = 0
+export const FALL_COLUMN_SWEEP_MS = 0
 export const FALL_LAND_BOUNCE_PX = 0
-export const SPAWN_BASE_DURATION_MS = 340
-export const SPAWN_DURATION_PER_ROW_MS = 105
-export const SPAWN_DELAY_PER_ROW_MS = 34
-export const SPAWN_COLUMN_SWEEP_MS = 28
+export const SPAWN_BASE_DURATION_MS = 260
+export const SPAWN_DURATION_PER_ROW_MS = 52
+export const SPAWN_DELAY_PER_ROW_MS = 0
+export const SPAWN_COLUMN_SWEEP_MS = 0
 
 export const LETTER_WEIGHTS: Array<[string, number]> = [
   ['A', 10],
