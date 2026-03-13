@@ -10,6 +10,7 @@ import {
 } from 'react'
 import './App.css'
 import {
+  CLEAR_PRE_HOLD_MS,
   CLEAR_WAVE_HOLD_MS,
   CLEAR_WAVE_STAGGER_MS,
   CONNECTOR_OFFSET,
@@ -144,7 +145,7 @@ function buildClearDelayMap(words: FoundWord[]): Map<string, number> {
   words.forEach((word) => {
     word.positions.forEach((position, index) => {
       const key = hashPosition(position)
-      const delay = index * CLEAR_WAVE_STAGGER_MS
+      const delay = CLEAR_PRE_HOLD_MS + index * CLEAR_WAVE_STAGGER_MS
       const current = delays.get(key)
       if (current === undefined || delay < current) {
         delays.set(key, delay)
@@ -272,15 +273,6 @@ export function LexplosionApp({
     })
   })
 
-  const boardClassName = [
-    'board',
-    activeStep?.phase === 'clear' ? 'board--shake' : '',
-    activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
-    inputLocked ? 'board--locked' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-
   const highlightedPositions = useMemo(() => {
     const selected = new Set(game.selectedPath.map(hashPosition))
     const invalid = new Set(invalidPath.map(hashPosition))
@@ -333,6 +325,15 @@ export function LexplosionApp({
     return motion
   }, [activeStep, previousStep])
   const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
+  const boardClassName = [
+    'board',
+    activeStep?.phase === 'clear' ? 'board--shake' : '',
+    activeStep?.phase === 'clear' && isAutoClearVisible ? 'board--auto-clear' : '',
+    activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
+    inputLocked ? 'board--locked' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   const spawnMotionMap = useMemo(() => {
     const motion = new Map<
       string,
@@ -744,7 +745,11 @@ export function LexplosionApp({
           <div className="status-pill">
             <span>Score</span>
             <strong
-              className={visibleClearStep ? 'status-pill__value--pulse' : ''}
+              className={
+                visibleClearStep
+                  ? 'status-pill__value--pulse status-pill__value--hit'
+                  : ''
+              }
             >
               {game.score}
             </strong>
@@ -763,7 +768,7 @@ export function LexplosionApp({
           <div className="board-panel__header">
             <p className="board-panel__status">{runtimeStatusMessage}</p>
             <div
-              className={`combo-badge${isAutoClearVisible ? ' combo-badge--auto' : ''}`}
+              className={`combo-badge${isAutoClearVisible ? ' combo-badge--auto' : ''}${visibleClearStep ? ' combo-badge--pulse' : ''}`}
               data-phase={activeStep?.phase ?? 'idle'}
             >
               {activeStep ? formatCombo(activeStep.combo) : formatCombo(game.combo)}
@@ -873,8 +878,18 @@ export function LexplosionApp({
                   highlightedPositions.selected.has(positionKey) ? 'tile--selected' : '',
                   highlightedPositions.invalid.has(positionKey) ? 'tile--invalid' : '',
                   highlightedPositions.cleared.has(positionKey) ? 'tile--clearing' : '',
-                  highlightedPositions.moved.has(positionKey) ? 'tile--falling' : '',
-                  highlightedPositions.spawned.has(positionKey) ? 'tile--spawning' : '',
+                  highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
+                    ? 'tile--clearing-auto'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                const glyphClasses = [
+                  'tile__content',
+                  highlightedPositions.moved.has(positionKey) ? 'tile__glyph--falling' : '',
+                  highlightedPositions.spawned.has(positionKey)
+                    ? 'tile__glyph--spawning'
+                    : '',
                 ]
                   .filter(Boolean)
                   .join(' ')
@@ -912,7 +927,9 @@ export function LexplosionApp({
                     {highlightedPositions.selected.has(positionKey) ? (
                       <span className="tile__order">{selectedOrderMap.get(positionKey)}</span>
                     ) : null}
-                    <span>{tile?.letter ?? ''}</span>
+                    <span className={glyphClasses}>
+                      <span className="tile__glyph">{tile?.letter ?? ''}</span>
+                    </span>
                   </button>
                 )
               }),

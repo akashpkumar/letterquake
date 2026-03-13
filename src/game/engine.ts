@@ -454,11 +454,15 @@ function injectEasyWords(
   board: Board,
   seed: number,
   targetCount: number,
+  allowedPositions?: Position[],
 ): { board: Board; seed: number } {
   let nextBoard = cloneBoard(board)
   let currentSeed = seed
   let easyCount = countEasyStraightWords(nextBoard)
   let attempts = 0
+  const allowed = allowedPositions
+    ? new Set(allowedPositions.map((position) => hashPosition(position)))
+    : null
 
   while (easyCount < targetCount && attempts < 24) {
     attempts += 1
@@ -483,6 +487,18 @@ function injectEasyWords(
     const start = {
       row: Math.floor(rowRoll * rowLimit),
       col: Math.floor(colRoll * colLimit),
+    }
+
+    const positions = word.split('').map((_, index) => ({
+      row: orientation === 'horizontal' ? start.row : start.row + index,
+      col: orientation === 'horizontal' ? start.col + index : start.col,
+    }))
+
+    if (
+      allowed &&
+      positions.some((position) => !allowed.has(hashPosition(position)))
+    ) {
+      continue
     }
 
     nextBoard = overlayWord(nextBoard, word, start, orientation)
@@ -641,7 +657,7 @@ export function resolveSelectedWord(
 
   const comboResult = resolveGravityCombos(gravityBoard, 2, moved)
   const { board: refilledBoard, spawned, seed } = refillBoard(comboResult.board, rngSeed)
-  const injectedRefill = injectEasyWords(refilledBoard, seed, REFILL_EASY_WORDS)
+  const injectedRefill = injectEasyWords(refilledBoard, seed, REFILL_EASY_WORDS, spawned)
 
   steps.push(...comboResult.steps)
   steps.push({
