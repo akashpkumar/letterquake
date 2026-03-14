@@ -201,7 +201,7 @@
 
 .board-panel {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid #3a3a3c;
   border-radius: 0.9rem;
   background: #121213;
@@ -277,7 +277,7 @@
   aspect-ratio: 1;
   margin: 0.8rem 0;
   padding: 0;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 0.55rem;
   background: transparent;
   touch-action: none;

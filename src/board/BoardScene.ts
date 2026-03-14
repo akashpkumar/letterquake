@@ -20,15 +20,20 @@ interface TileNode {
   plate: Graphics
   identity: Graphics
   glyph: Text
+  glyphBaseY: number
   row: number
   col: number
   clearToken: string | null
   durability: number | null
+  selected: boolean
+  anchorPulseToken: string | null
 }
 
 interface LabelNode {
   key: string
   container: Container
+  background: Graphics
+  text: Text
 }
 
 interface Animation {
@@ -93,10 +98,28 @@ function easeOutQuart(progress: number) {
   return 1 - (1 - progress) ** 4
 }
 
+function easeInCubic(progress: number) {
+  return progress ** 3
+}
+
 function easeOutBack(progress: number) {
   const c1 = 1.70158
   const c3 = c1 + 1
   return 1 + c3 * (progress - 1) ** 3 + c1 * (progress - 1) ** 2
+}
+
+function easeInOutCubic(progress: number) {
+  return progress < 0.5
+    ? 4 * progress ** 3
+    : 1 - ((-2 * progress + 2) ** 3) / 2
+}
+
+function getRestScale(selected: boolean) {
+  return selected ? { x: 1.02, y: 0.98 } : { x: 1, y: 1 }
+}
+
+function setTileScale(node: TileNode, scaleX: number, scaleY: number) {
+  node.container.scale.set(scaleX, scaleY)
 }
 
 function getGlyphInsetDistance(unitX: number, unitY: number, metrics: BoardMetrics) {
@@ -119,6 +142,19 @@ function getLabelStyle(variant: BoardLabelVariant) {
       return FLOAT_AUTO_SCORE_STYLE
     default:
       return FLOAT_WORD_STYLE
+  }
+}
+
+function getLabelTheme(variant: BoardLabelVariant) {
+  switch (variant) {
+    case 'score':
+      return { fill: 0x4b360c, stroke: 0xa97e1f, alpha: 0.94 }
+    case 'auto-word':
+      return { fill: 0x143c2b, stroke: 0x53af7b, alpha: 0.95 }
+    case 'auto-score':
+      return { fill: 0x1a4f31, stroke: 0x62c08a, alpha: 0.95 }
+    default:
+      return { fill: 0x202023, stroke: 0x434349, alpha: 0.95 }
   }
 }
 
@@ -429,14 +465,27 @@ function drawTileIdentity(graphics: Graphics, tile: BoardRenderTile, metrics: Bo
 
 function makeLabelNode(label: BoardRenderLabel) {
   const container = new Container()
+  const background = new Graphics()
   const text = new Text({
     text: label.text,
     style: getLabelStyle(label.variant),
   })
   text.anchor.set(0.5)
+  const theme = getLabelTheme(label.variant)
+  const paddingX = label.variant.includes('score') ? 18 : 14
+  const paddingY = label.variant.includes('score') ? 9 : 7
+  const width = text.width + paddingX * 2
+  const height = text.height + paddingY * 2
+  background.fill({ color: theme.fill, alpha: theme.alpha })
+  background.roundRect(-width / 2, -height / 2, width, height, height / 2)
+  background.fill()
+  background.stroke({ color: theme.stroke, width: 1.5, alpha: 0.9 })
+  background.roundRect(-width / 2, -height / 2, width, height, height / 2)
+  background.stroke()
+  container.addChild(background)
   container.addChild(text)
   container.eventMode = 'none'
-  return { key: label.key, container }
+  return { key: label.key, container, background, text }
 }
 
 export async function createBoardScene(
@@ -465,6 +514,7 @@ export async function createBoardScene(
   const pathLayer = new Graphics()
   const tileLayer = new Container()
   const labelLayer = new Container()
+  tileLayer.sortableChildren = true
 
   app.stage.addChild(backgroundLayer)
   app.stage.addChild(pulseLayer)
@@ -540,6 +590,7 @@ export async function createBoardScene(
 
   function makeTileNode(tile: BoardRenderTile) {
     const container = new Container()
+    container.pivot.set(metrics.cellWidth / 2, metrics.cellHeight / 2)
     const plate = new Graphics()
     const identity = new Graphics()
     const glyph = new Text({
@@ -562,10 +613,13 @@ export async function createBoardScene(
       plate,
       identity,
       glyph,
+      glyphBaseY: metrics.cellHeight / 2 + 1,
       row: tile.row,
       col: tile.col,
       clearToken: null,
       durability: tile.durability ?? null,
+      selected: tile.selected,
+      anchorPulseToken: null,
     }
   }
 
@@ -577,41 +631,111 @@ export async function createBoardScene(
     node.glyph.text = tile.letter
     node.glyph.style.fontSize = metrics.cellWidth * 0.42
     node.glyph.tint = letterTint
-    node.glyph.position.set(metrics.cellWidth / 2, metrics.cellHeight / 2 + 1)
+    node.glyphBaseY = metrics.cellHeight / 2 + 1
+    node.glyph.position.set(metrics.cellWidth / 2, node.glyphBaseY)
 
     const target = getCellPosition(tile.row, tile.col, metrics)
+    const targetCenterX = target.x + metrics.cellWidth / 2
+    const targetCenterY = target.y + metrics.cellHeight / 2
+    node.container.pivot.set(metrics.cellWidth / 2, metrics.cellHeight / 2)
+    node.container.zIndex = tile.selected ? 30 : tile.invalid ? 24 : tile.cleared ? 18 : 10
     const motion = tile.motion
     const moved = node.row !== tile.row || node.col !== tile.col
     if (motion && (moved || node.container.x === 0 && node.container.y === 0)) {
       const from = getCellPosition(motion.fromRow, motion.fromCol, metrics)
+      const fromCenterX = from.x + metrics.cellWidth / 2
+      const fromCenterY = from.y + metrics.cellHeight / 2
       const spawnDrift = motion.kind === 'spawn' ? ((tile.col % 2 === 0 ? -1 : 1) * metrics.cellWidth) / 48 : 0
-      node.container.position.set(from.x + spawnDrift, from.y)
+      node.container.position.set(fromCenterX + spawnDrift, fromCenterY)
       node.container.alpha = motion.kind === 'spawn' ? 0 : 1
       const startScale = motion.kind === 'spawn' ? 0.98 : 1
-      node.container.scale.set(startScale)
+      setTileScale(
+        node,
+        motion.kind === 'spawn' ? startScale * 0.92 : startScale,
+        motion.kind === 'spawn' ? startScale * 1.08 : startScale,
+      )
       runAnimation({
         id: `motion:${tile.id}:${tile.row}:${tile.col}:${motion.delayMs}:${motion.durationMs}`,
         elapsedMs: 0,
         delayMs: motion.delayMs,
         durationMs: motion.durationMs,
         update: (progress) => {
-          const eased = easeOutQuart(progress)
-          node.container.x = from.x + spawnDrift + (target.x - from.x - spawnDrift) * eased
-          node.container.y = from.y + (target.y - from.y) * eased
-          node.container.alpha = motion.kind === 'spawn' ? 0.3 + progress * 0.7 : 1
-          const scale = motion.kind === 'spawn' ? startScale + (1 - startScale) * easeOutBack(progress) : 1
-          node.container.scale.set(scale)
+          if (motion.kind === 'fall') {
+            const fallProgress = progress < 0.8 ? easeInCubic(progress / 0.8) : 1
+            const settleProgress = progress < 0.8 ? 0 : (progress - 0.8) / 0.2
+            const settle = progress < 0.8 ? 0 : easeOutBack(settleProgress) - 1
+            node.container.x = targetCenterX
+            node.container.y =
+              fromCenterY + (targetCenterY - fromCenterY) * fallProgress - settle * metrics.cellHeight * 0.04
+            node.container.alpha = 1
+            if (progress > 0.78) {
+              const impact = Math.sin(settleProgress * Math.PI) * (1 + Math.sin(settleProgress * Math.PI * 1.8) * 0.18)
+              setTileScale(
+                node,
+                1 + impact * 0.12,
+                1 - impact * 0.18,
+              )
+            } else {
+              setTileScale(node, 1, 1)
+            }
+            return
+          }
+
+          const fallProgress = progress < 0.82 ? easeInCubic(progress / 0.82) : 1
+          const settleProgress = progress < 0.82 ? 0 : (progress - 0.82) / 0.18
+          node.container.x =
+            fromCenterX + spawnDrift + (targetCenterX - fromCenterX - spawnDrift) * fallProgress
+          node.container.y = fromCenterY + (targetCenterY - fromCenterY) * fallProgress
+          node.container.alpha = 0.25 + progress * 0.75
+          if (progress > 0.8) {
+            const impact =
+              Math.sin(settleProgress * Math.PI) *
+              (1 + Math.sin(settleProgress * Math.PI * 1.8) * 0.16)
+            setTileScale(node, 1 + impact * 0.11, 1 - impact * 0.17)
+          } else {
+            const stretch = 1.16 - fallProgress * 0.16
+            const squeeze = 0.88 + fallProgress * 0.12
+            setTileScale(node, squeeze, stretch)
+          }
         },
         complete: () => {
-          node.container.position.set(target.x, target.y)
+          node.container.position.set(targetCenterX, targetCenterY)
           node.container.alpha = 1
-          node.container.scale.set(1)
+          const rest = getRestScale(tile.selected)
+          setTileScale(node, rest.x, rest.y)
         },
       })
     } else {
-      node.container.position.set(target.x, target.y)
+      node.container.position.set(targetCenterX, targetCenterY)
       node.container.alpha = 1
-      node.container.scale.set(tile.selected ? 1.04 : 1)
+      const rest = getRestScale(tile.selected)
+      setTileScale(node, rest.x, rest.y)
+    }
+
+    if (tile.selected !== node.selected) {
+      runAnimation({
+        id: `select:${tile.id}:${tile.selected ? 'in' : 'out'}`,
+        elapsedMs: 0,
+        delayMs: 0,
+        durationMs: tile.selected ? 150 : 120,
+        update: (progress) => {
+          const eased = tile.selected ? easeOutBack(progress) : easeInOutCubic(progress)
+          const start = tile.selected ? { x: 1, y: 1 } : { x: 1.02, y: 0.98 }
+          const end = tile.selected ? { x: 1.02, y: 0.98 } : { x: 1, y: 1 }
+          setTileScale(
+            node,
+            start.x + (end.x - start.x) * eased,
+            start.y + (end.y - start.y) * eased,
+          )
+          node.container.y =
+            targetCenterY - (tile.selected ? eased * 2.5 : (1 - eased) * 2.5)
+        },
+        complete: () => {
+          const rest = getRestScale(tile.selected)
+          setTileScale(node, rest.x, rest.y)
+          node.container.y = targetCenterY
+        },
+      })
     }
 
     if (durabilityChanged) {
@@ -624,16 +748,61 @@ export async function createBoardScene(
         update: (progress) => {
           const eased = easeOutQuart(progress)
           node.identity.alpha = 0.25 + eased * 0.75
-          const pulse = 1 + Math.sin(progress * Math.PI) * 0.03
-          node.container.scale.set(tile.selected ? 1.04 * pulse : pulse)
+          const pulse = Math.sin(progress * Math.PI) * 0.045
+          const rest = getRestScale(tile.selected)
+          setTileScale(node, rest.x + pulse, rest.y - pulse)
         },
         complete: () => {
           node.identity.alpha = 1
-          node.container.scale.set(tile.selected ? 1.04 : 1)
+          const rest = getRestScale(tile.selected)
+          setTileScale(node, rest.x, rest.y)
         },
       })
     } else {
       node.identity.alpha = 1
+    }
+
+    if (tile.kind === 'gold' && tile.cleared) {
+      runAnimation({
+        id: `gold:${tile.id}:${tile.clearDelayMs ?? 0}`,
+        elapsedMs: 0,
+        delayMs: tile.clearDelayMs ?? 0,
+        durationMs: TILE_CLEAR_ANIMATION_MS * 0.55,
+        update: (progress) => {
+          node.identity.alpha = 0.9 + Math.sin(progress * Math.PI) * 0.35
+        },
+        complete: () => {
+          node.identity.alpha = tile.cleared ? 0.8 : 1
+        },
+      })
+    }
+
+    if (tile.kind === 'anchor' && tile.retained) {
+      const anchorPulseToken = `${currentModel.phase}:${tile.row}:${tile.col}`
+      if (node.anchorPulseToken !== anchorPulseToken) {
+        node.anchorPulseToken = anchorPulseToken
+        runAnimation({
+          id: `anchor:${tile.id}:${anchorPulseToken}`,
+          elapsedMs: 0,
+          delayMs: 0,
+          durationMs: 240,
+          update: (progress) => {
+            const wave = Math.sin(progress * Math.PI)
+            const rest = getRestScale(tile.selected)
+            node.container.x = targetCenterX + wave * 1.3
+            node.identity.alpha = 0.8 + wave * 0.35
+            setTileScale(node, rest.x - wave * 0.02, rest.y + wave * 0.02)
+          },
+          complete: () => {
+            const rest = getRestScale(tile.selected)
+            node.container.x = targetCenterX
+            node.identity.alpha = 1
+            setTileScale(node, rest.x, rest.y)
+          },
+        })
+      }
+    } else {
+      node.anchorPulseToken = null
     }
 
     if (tile.cleared) {
@@ -646,13 +815,35 @@ export async function createBoardScene(
           delayMs: tile.clearDelayMs ?? 0,
           durationMs: TILE_CLEAR_ANIMATION_MS,
           update: (progress) => {
-            const eased = easeOutQuart(progress)
-            node.container.scale.set(1 + eased * 0.08)
-            node.container.alpha = 1 - eased * 0.7
+            if (progress < 0.38) {
+              const confirm = progress / 0.38
+              const crest = Math.exp(-((confirm - 0.48) ** 2) / 0.05)
+              const trailing = Math.exp(-((confirm - 0.68) ** 2) / 0.028) * 0.42
+              const wave = clamp(crest + trailing, 0, 1.08)
+              setTileScale(node, 1 - wave * 0.09, 1 + wave * 0.16)
+              node.container.y = targetCenterY - wave * metrics.cellHeight * 0.22
+              node.glyph.y = node.glyphBaseY - wave * metrics.cellHeight * 0.12
+              node.glyph.rotation = (confirm - 0.48) * 0.22 * wave
+              node.container.alpha = 1
+              return
+            }
+
+            const release = (progress - 0.38) / 0.62
+            const eased = easeOutQuart(release)
+            node.container.y = targetCenterY
+            node.glyph.y = node.glyphBaseY
+            const rest = getRestScale(tile.selected)
+            setTileScale(node, rest.x, rest.y)
+            node.container.alpha = 1 - eased * 0.78
+            node.glyph.rotation = 0
           },
           complete: () => {
-            node.container.scale.set(tile.selected ? 1.04 : 1)
+            const rest = getRestScale(tile.selected)
+            setTileScale(node, rest.x, rest.y)
             node.container.alpha = currentModel.phase === 'clear' ? 0.3 : 1
+            node.container.y = targetCenterY
+            node.glyph.y = node.glyphBaseY
+            node.glyph.rotation = 0
           },
         })
       }
@@ -662,15 +853,20 @@ export async function createBoardScene(
 
     if (!tile.cleared) {
       node.container.alpha = 1
-      node.container.scale.set(tile.selected ? 1.04 : 1)
+      const rest = getRestScale(tile.selected)
+      setTileScale(node, rest.x, rest.y)
+      node.container.y = targetCenterY
+      node.glyph.y = node.glyphBaseY
+      node.glyph.rotation = 0
     }
 
     node.row = tile.row
     node.col = tile.col
     node.durability = tile.durability ?? null
+    node.selected = tile.selected
   }
 
-function drawSegments() {
+  function drawSegments() {
     pathLayer.clear()
     currentModel.segments.forEach((segment) => {
       const from = getCellCenter(segment.from.row, segment.from.col, metrics)
@@ -689,7 +885,12 @@ function drawSegments() {
       const x2 = to.x - unitX * toInset
       const y2 = to.y - unitY * toInset
       const color = segment.variant === 'active' ? ACTIVE_PATH : segment.variant === 'invalid' ? INVALID_PATH : EVENT_PATH
-      const alpha = segment.variant === 'event' ? 0.94 : 1
+      const alpha =
+        segment.variant === 'event'
+          ? 0.94
+          : segment.variant === 'invalid'
+            ? 0.96
+            : 0.88 + Math.sin(performance.now() / 120) * 0.08
       const outlineWidth = metrics.cellWidth * 0.06
       const lineWidth = metrics.cellWidth * 0.032
       pathLayer.stroke({ color: ACTIVE_PATH_OUTLINE, width: outlineWidth, alpha: segment.variant === 'event' ? 0.58 : 0.96, cap: 'round', join: 'round' })
@@ -751,16 +952,19 @@ function drawSegments() {
         id: `label:${label.key}`,
         elapsedMs: 0,
         delayMs: label.delayMs,
-        durationMs: label.variant.includes('score') ? 820 : 760,
+        durationMs: label.variant.includes('score') ? 920 : 820,
         update: (progress) => {
           const eased = easeOutQuart(progress)
-          node.container.alpha = 1 - progress
+          const arcX = Math.sin(progress * Math.PI) * label.driftX * 0.35
+          node.container.alpha = progress < 0.12 ? progress / 0.12 : 1 - progress
           node.container.position.set(
-            x + label.driftX * eased,
-            y - (label.variant.includes('score') ? 44 : 34) * eased,
+            x + label.driftX * eased + arcX,
+            y - (label.variant.includes('score') ? 50 : 38) * eased,
           )
-          const scale = label.variant.includes('score') ? 0.94 + easeOutBack(progress) * 0.1 : 0.98 + eased * 0.04
+          const wobble = label.variant.includes('score') ? Math.sin(progress * Math.PI) * 0.035 : 0
+          const scale = label.variant.includes('score') ? 0.9 + easeOutBack(progress) * 0.16 : 0.96 + eased * 0.06
           node.container.scale.set(scale)
+          node.container.rotation = wobble
         },
         complete: () => {
           labelLayer.removeChild(node.container)
@@ -779,11 +983,11 @@ function drawSegments() {
       id: `impact:${Date.now()}`,
       elapsedMs: 0,
       delayMs: 0,
-      durationMs: 360,
+      durationMs: 300,
       update: (progress) => {
         const eased = easeOutQuart(progress)
         pulseLayer.clear()
-        pulseLayer.fill({ color: EVENT_PATH, alpha: (1 - eased) * 0.16 })
+        pulseLayer.fill({ color: EVENT_PATH, alpha: (1 - eased) * 0.18 })
         pulseLayer.circle(centerX, centerY, maxRadius * (0.45 + eased * 0.55))
         pulseLayer.fill()
       },

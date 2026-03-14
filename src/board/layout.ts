@@ -19,7 +19,9 @@ export function getBoardMetrics(
   rows: number,
   cols: number,
 ): BoardMetrics {
-  const boardSize = Math.max(1, Math.min(width, height))
+  const maxBoardSize = Math.max(1, Math.min(width, height))
+  const bleedPadding = Math.max(8, maxBoardSize * 0.04)
+  const boardSize = Math.max(1, maxBoardSize - bleedPadding * 2)
   const gap = Math.max(4, boardSize * 0.013)
   const totalGapX = gap * Math.max(0, cols - 1)
   const totalGapY = gap * Math.max(0, rows - 1)
