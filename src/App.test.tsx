@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LexplosionApp } from './App'
+import { getBoardMetrics } from './board/layout'
 import type { BoardRenderModel } from './board/types'
 import { createGame, makeBoardFromRows } from './game/engine'
 
@@ -52,6 +53,15 @@ function installBoardGeometry() {
     configurable: true,
     value: () => rect,
   })
+
+  const metrics = getBoardMetrics(rect.width, rect.height, 5, 5)
+  const centerOf = (row: number, col: number) => ({
+    clientX: metrics.offsetX + col * metrics.pitchX + metrics.cellWidth / 2,
+    clientY: metrics.offsetY + row * metrics.pitchY + metrics.cellHeight / 2,
+  })
+  const shortStepX = (ratio: number) => metrics.cellWidth * ratio
+
+  return { board, centerOf, shortStepX }
 }
 
 function latestBoardModel() {
@@ -83,22 +93,19 @@ describe('LexplosionApp', () => {
     ])
 
     await act(async () => {})
-    installBoardGeometry()
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('board'), {
+    fireEvent.pointerDown(board, {
       pointerId: 1,
-      clientX: 20,
-      clientY: 20,
+      ...centerOf(0, 0),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 64,
-      clientY: 20,
+      ...centerOf(0, 1),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 108,
-      clientY: 20,
+      ...centerOf(0, 2),
     })
     fireEvent.pointerUp(window)
 
@@ -123,22 +130,19 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
 
-    installBoardGeometry()
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('board'), {
+    fireEvent.pointerDown(board, {
       pointerId: 1,
-      clientX: 20,
-      clientY: 20,
+      ...centerOf(0, 0),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 64,
-      clientY: 20,
+      ...centerOf(0, 1),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 108,
-      clientY: 20,
+      ...centerOf(0, 2),
     })
     fireEvent.pointerUp(window)
 
@@ -160,17 +164,16 @@ describe('LexplosionApp', () => {
     ])
 
     await act(async () => {})
-    installBoardGeometry()
+    const { board, centerOf, shortStepX } = installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('board'), {
+    fireEvent.pointerDown(board, {
       pointerId: 1,
-      clientX: 20,
-      clientY: 20,
+      ...centerOf(0, 0),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 49,
-      clientY: 20,
+      clientX: centerOf(0, 0).clientX + shortStepX(0.38),
+      clientY: centerOf(0, 0).clientY,
     })
 
     await act(async () => {})
@@ -187,17 +190,15 @@ describe('LexplosionApp', () => {
     ])
 
     await act(async () => {})
-    installBoardGeometry()
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('board'), {
+    fireEvent.pointerDown(board, {
       pointerId: 1,
-      clientX: 20,
-      clientY: 20,
+      ...centerOf(0, 0),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 64,
-      clientY: 20,
+      ...centerOf(0, 1),
     })
 
     await act(async () => {})
@@ -209,10 +210,9 @@ describe('LexplosionApp', () => {
         .map((tile: { selectedOrder?: number }) => tile.selectedOrder),
     ).toEqual([1, 2])
 
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 108,
-      clientY: 20,
+      ...centerOf(0, 2),
     })
 
     await act(async () => {})
@@ -237,22 +237,19 @@ describe('LexplosionApp', () => {
     ])
 
     await act(async () => {})
-    installBoardGeometry()
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('board'), {
+    fireEvent.pointerDown(board, {
       pointerId: 1,
-      clientX: 20,
-      clientY: 152,
+      ...centerOf(3, 0),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 64,
-      clientY: 152,
+      ...centerOf(3, 1),
     })
-    fireEvent.pointerMove(screen.getByTestId('board'), {
+    fireEvent.pointerMove(board, {
       pointerId: 1,
-      clientX: 108,
-      clientY: 152,
+      ...centerOf(3, 2),
     })
     fireEvent.pointerUp(window)
 

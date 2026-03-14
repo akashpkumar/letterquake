@@ -36,6 +36,11 @@ interface LabelNode {
   text: Text
 }
 
+interface ParticleNode {
+  id: string
+  graphic: Graphics
+}
+
 interface Animation {
   id: string
   elapsedMs: number
@@ -155,6 +160,35 @@ function getLabelTheme(variant: BoardLabelVariant) {
       return { fill: 0x1a4f31, stroke: 0x62c08a, alpha: 0.95 }
     default:
       return { fill: 0x202023, stroke: 0x434349, alpha: 0.95 }
+  }
+}
+
+function getParticlePalette(kind: BoardRenderTile['kind']) {
+  switch (kind) {
+    case 'gold':
+      return {
+        primary: 0xffd76f,
+        secondary: 0xffefb3,
+        smoke: 0x6a5417,
+      }
+    case 'cracked':
+      return {
+        primary: 0xc6ccd1,
+        secondary: 0xf0f3f5,
+        smoke: 0x3c4248,
+      }
+    case 'anchor':
+      return {
+        primary: 0x9dc6dd,
+        secondary: 0xdff4ff,
+        smoke: 0x22303a,
+      }
+    default:
+      return {
+        primary: 0x85e1a7,
+        secondary: 0xe7fff0,
+        smoke: 0x183126,
+      }
   }
 }
 
@@ -513,6 +547,7 @@ export async function createBoardScene(
   const pulseLayer = new Graphics()
   const pathLayer = new Graphics()
   const tileLayer = new Container()
+  const particleLayer = new Container()
   const labelLayer = new Container()
   tileLayer.sortableChildren = true
 
@@ -520,16 +555,103 @@ export async function createBoardScene(
   app.stage.addChild(pulseLayer)
   app.stage.addChild(tileLayer)
   app.stage.addChild(pathLayer)
+  app.stage.addChild(particleLayer)
   app.stage.addChild(labelLayer)
 
   const tileNodes = new Map<string, TileNode>()
   const labelNodes = new Map<string, LabelNode>()
+  const particleNodes = new Map<string, ParticleNode>()
   const animations = new Map<string, Animation>()
   let metrics = getBoardMetrics(app.renderer.width, app.renderer.height, initialModel.rows, initialModel.cols)
   let currentModel = initialModel
 
   function runAnimation(animation: Animation) {
     animations.set(animation.id, animation)
+  }
+
+  function destroyParticle(id: string) {
+    const node = particleNodes.get(id)
+    if (!node) {
+      return
+    }
+    particleLayer.removeChild(node.graphic)
+    particleNodes.delete(id)
+  }
+
+  function emitClearParticles(tile: BoardRenderTile, centerX: number, centerY: number) {
+    const palette = getParticlePalette(tile.kind)
+    const pieceCount = tile.kind === 'gold' ? 16 : tile.kind === 'anchor' ? 12 : 14
+
+    for (let index = 0; index < pieceCount; index += 1) {
+      const id = `particle:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
+      destroyParticle(id)
+
+      const graphic = new Graphics()
+      const node = { id, graphic }
+      particleNodes.set(id, node)
+      particleLayer.addChild(graphic)
+
+      const angle = (-Math.PI / 2) + ((index / Math.max(1, pieceCount - 1)) - 0.5) * Math.PI * 1.05
+      const speed = metrics.cellWidth * (0.62 + (index % 4) * 0.08)
+      const lift = metrics.cellHeight * (0.24 + (index % 5) * 0.04)
+      const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * (0.08 + (index % 3) * 0.03)))
+      const spin = (index % 2 === 0 ? -1 : 1) * (0.12 + (index % 4) * 0.04)
+      const shardWidth = metrics.cellWidth * (0.11 + (index % 3) * 0.02)
+      const shardHeight = metrics.cellHeight * (0.046 + (index % 2) * 0.015)
+      const streakLength = metrics.cellHeight * (0.12 + (index % 3) * 0.03)
+      const circleRadius = metrics.cellWidth * (0.032 + (index % 3) * 0.01)
+      const isDust = index >= pieceCount - 3
+
+      runAnimation({
+        id,
+        elapsedMs: 0,
+        delayMs: tile.clearDelayMs ?? 0,
+        durationMs: 560 + (index % 4) * 70,
+        update: (progress) => {
+          const eased = easeOutQuart(progress)
+          const fade = 1 - eased
+          const wave = Math.sin(progress * Math.PI)
+          const travel = speed * eased
+          const rise = lift * wave
+          graphic.clear()
+          graphic.position.set(
+            centerX + Math.cos(angle) * travel + drift * eased,
+            centerY + Math.sin(angle) * travel - rise,
+          )
+          graphic.rotation = spin * progress * Math.PI * 2.2
+          graphic.alpha = 1
+
+          if (isDust) {
+            graphic.fill({ color: palette.smoke, alpha: fade * 0.34 })
+            graphic.circle(0, 0, circleRadius * (1 + eased * 1.5))
+            graphic.fill()
+            return
+          }
+
+          graphic.stroke({
+            color: index % 2 === 0 ? palette.secondary : palette.primary,
+            width: Math.max(1, shardHeight * 0.55),
+            alpha: fade * 0.7,
+            cap: 'round',
+          })
+          graphic.moveTo(-streakLength * 0.35, 0)
+          graphic.lineTo(streakLength * 0.45, 0)
+          graphic.stroke()
+          graphic.fill({ color: index % 2 === 0 ? palette.primary : palette.secondary, alpha: fade })
+          graphic.roundRect(
+            -shardWidth / 2,
+            -shardHeight / 2,
+            shardWidth,
+            shardHeight,
+            shardHeight / 2,
+          )
+          graphic.fill()
+        },
+        complete: () => {
+          destroyParticle(id)
+        },
+      })
+    }
   }
 
   app.ticker.add(() => {
@@ -810,6 +932,7 @@ export async function createBoardScene(
       const clearToken = `${tile.clearDelayMs ?? 0}:${tile.kind}:${currentModel.phase}`
       if (node.clearToken !== clearToken) {
         node.clearToken = clearToken
+        emitClearParticles(tile, targetCenterX, targetCenterY)
         runAnimation({
           id: `clear:${tile.id}:${clearToken}`,
           elapsedMs: 0,
@@ -947,7 +1070,10 @@ export async function createBoardScene(
       const node = makeLabelNode(label)
       const x = metrics.offsetX + label.x * metrics.pitchX
       const y = metrics.offsetY + label.y * metrics.pitchY
-      node.container.position.set(x, y)
+      const minY = node.text.height * 0.95 + 6
+      const maxY = app.renderer.height - node.text.height * 0.8 - 6
+      const startY = clamp(y, minY, maxY)
+      node.container.position.set(x, startY)
       node.container.alpha = 0
       labelLayer.addChild(node.container)
       labelNodes.set(label.key, node)
@@ -959,10 +1085,14 @@ export async function createBoardScene(
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const arcX = Math.sin(progress * Math.PI) * label.driftX * 0.35
+          const liftDistance = Math.min(
+            label.variant.includes('score') ? 50 : 38,
+            Math.max(14, startY - minY + 6),
+          )
           node.container.alpha = progress < 0.12 ? progress / 0.12 : 1 - progress
           node.container.position.set(
             x + label.driftX * eased + arcX,
-            y - (label.variant.includes('score') ? 50 : 38) * eased,
+            startY - liftDistance * eased,
           )
           const wobble = label.variant.includes('score') ? Math.sin(progress * Math.PI) * 0.035 : 0
           const scale = label.variant.includes('score') ? 0.9 + easeOutBack(progress) * 0.16 : 0.96 + eased * 0.06
@@ -1034,6 +1164,7 @@ export async function createBoardScene(
     sync,
     destroy() {
       animations.clear()
+      particleNodes.clear()
       app.destroy(true, { children: true })
       if (mountNode.contains(canvas)) {
         mountNode.removeChild(canvas)
