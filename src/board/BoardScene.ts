@@ -119,6 +119,10 @@ function easeInOutCubic(progress: number) {
     : 1 - ((-2 * progress + 2) ** 3) / 2
 }
 
+function easeOutCubic(progress: number) {
+  return 1 - (1 - progress) ** 3
+}
+
 function getRestScale(selected: boolean) {
   return selected ? { x: 1.02, y: 0.98 } : { x: 1, y: 1 }
 }
@@ -167,9 +171,9 @@ function getParticlePalette(kind: BoardRenderTile['kind']) {
   switch (kind) {
     case 'gold':
       return {
-        primary: 0xffd76f,
-        secondary: 0xffefb3,
-        smoke: 0x6a5417,
+        primary: 0xffc94d,
+        secondary: 0xffe698,
+        smoke: 0x7b5b11,
       }
     case 'cracked':
       return {
@@ -561,9 +565,11 @@ export async function createBoardScene(
   const tileNodes = new Map<string, TileNode>()
   const labelNodes = new Map<string, LabelNode>()
   const particleNodes = new Map<string, ParticleNode>()
+  const segmentProgress = new Map<string, number>()
   const animations = new Map<string, Animation>()
   let metrics = getBoardMetrics(app.renderer.width, app.renderer.height, initialModel.rows, initialModel.cols)
   let currentModel = initialModel
+  let pathDirty = true
 
   function runAnimation(animation: Animation) {
     animations.set(animation.id, animation)
@@ -580,7 +586,8 @@ export async function createBoardScene(
 
   function emitClearParticles(tile: BoardRenderTile, centerX: number, centerY: number) {
     const palette = getParticlePalette(tile.kind)
-    const pieceCount = tile.kind === 'gold' ? 16 : tile.kind === 'anchor' ? 12 : 14
+    const isGold = tile.kind === 'gold'
+    const pieceCount = isGold ? 28 : tile.kind === 'anchor' ? 12 : 14
 
     for (let index = 0; index < pieceCount; index += 1) {
       const id = `particle:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
@@ -591,22 +598,23 @@ export async function createBoardScene(
       particleNodes.set(id, node)
       particleLayer.addChild(graphic)
 
-      const angle = (-Math.PI / 2) + ((index / Math.max(1, pieceCount - 1)) - 0.5) * Math.PI * 1.05
-      const speed = metrics.cellWidth * (0.62 + (index % 4) * 0.08)
-      const lift = metrics.cellHeight * (0.24 + (index % 5) * 0.04)
-      const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * (0.08 + (index % 3) * 0.03)))
-      const spin = (index % 2 === 0 ? -1 : 1) * (0.12 + (index % 4) * 0.04)
-      const shardWidth = metrics.cellWidth * (0.11 + (index % 3) * 0.02)
-      const shardHeight = metrics.cellHeight * (0.046 + (index % 2) * 0.015)
-      const streakLength = metrics.cellHeight * (0.12 + (index % 3) * 0.03)
-      const circleRadius = metrics.cellWidth * (0.032 + (index % 3) * 0.01)
-      const isDust = index >= pieceCount - 3
+      const angleSpread = isGold ? Math.PI * 1.22 : Math.PI * 1.05
+      const angle = (-Math.PI / 2) + ((index / Math.max(1, pieceCount - 1)) - 0.5) * angleSpread
+      const speed = metrics.cellWidth * ((isGold ? 0.74 : 0.62) + (index % 4) * (isGold ? 0.1 : 0.08))
+      const lift = metrics.cellHeight * ((isGold ? 0.3 : 0.24) + (index % 5) * (isGold ? 0.05 : 0.04))
+      const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * ((isGold ? 0.11 : 0.08) + (index % 3) * (isGold ? 0.04 : 0.03))))
+      const spin = (index % 2 === 0 ? -1 : 1) * ((isGold ? 0.18 : 0.12) + (index % 4) * (isGold ? 0.05 : 0.04))
+      const shardWidth = metrics.cellWidth * ((isGold ? 0.13 : 0.11) + (index % 3) * (isGold ? 0.024 : 0.02))
+      const shardHeight = metrics.cellHeight * ((isGold ? 0.052 : 0.046) + (index % 2) * (isGold ? 0.018 : 0.015))
+      const streakLength = metrics.cellHeight * ((isGold ? 0.17 : 0.12) + (index % 3) * (isGold ? 0.04 : 0.03))
+      const circleRadius = metrics.cellWidth * ((isGold ? 0.04 : 0.032) + (index % 3) * (isGold ? 0.012 : 0.01))
+      const isDust = index >= pieceCount - (isGold ? 5 : 3)
 
       runAnimation({
         id,
         elapsedMs: 0,
         delayMs: tile.clearDelayMs ?? 0,
-        durationMs: 560 + (index % 4) * 70,
+        durationMs: (isGold ? 700 : 560) + (index % 4) * (isGold ? 90 : 70),
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const fade = 1 - eased
@@ -622,7 +630,7 @@ export async function createBoardScene(
           graphic.alpha = 1
 
           if (isDust) {
-            graphic.fill({ color: palette.smoke, alpha: fade * 0.34 })
+            graphic.fill({ color: palette.smoke, alpha: fade * (isGold ? 0.44 : 0.34) })
             graphic.circle(0, 0, circleRadius * (1 + eased * 1.5))
             graphic.fill()
             return
@@ -630,14 +638,17 @@ export async function createBoardScene(
 
           graphic.stroke({
             color: index % 2 === 0 ? palette.secondary : palette.primary,
-            width: Math.max(1, shardHeight * 0.55),
-            alpha: fade * 0.7,
+            width: Math.max(1, shardHeight * (isGold ? 0.72 : 0.55)),
+            alpha: fade * (isGold ? 0.88 : 0.7),
             cap: 'round',
           })
           graphic.moveTo(-streakLength * 0.35, 0)
           graphic.lineTo(streakLength * 0.45, 0)
           graphic.stroke()
-          graphic.fill({ color: index % 2 === 0 ? palette.primary : palette.secondary, alpha: fade })
+          graphic.fill({
+            color: index % 2 === 0 ? palette.primary : palette.secondary,
+            alpha: fade * (isGold ? 1.08 : 1),
+          })
           graphic.roundRect(
             -shardWidth / 2,
             -shardHeight / 2,
@@ -669,6 +680,11 @@ export async function createBoardScene(
         animations.delete(key)
       }
     })
+
+    if (pathDirty || currentModel.segments.length > 0) {
+      drawSegments()
+      pathDirty = false
+    }
   })
 
   function resize(width: number, height: number) {
@@ -840,18 +856,19 @@ export async function createBoardScene(
         id: `select:${tile.id}:${tile.selected ? 'in' : 'out'}`,
         elapsedMs: 0,
         delayMs: 0,
-        durationMs: tile.selected ? 150 : 120,
+        durationMs: tile.selected ? 170 : 130,
         update: (progress) => {
-          const eased = tile.selected ? easeOutBack(progress) : easeInOutCubic(progress)
+          const eased = tile.selected ? easeOutCubic(progress) : easeInOutCubic(progress)
           const start = tile.selected ? { x: 1, y: 1 } : { x: 1.02, y: 0.98 }
           const end = tile.selected ? { x: 1.02, y: 0.98 } : { x: 1, y: 1 }
+          const drift = Math.sin(progress * Math.PI) * (tile.selected ? 0.012 : 0.008)
           setTileScale(
             node,
-            start.x + (end.x - start.x) * eased,
-            start.y + (end.y - start.y) * eased,
+            start.x + (end.x - start.x) * eased - drift,
+            start.y + (end.y - start.y) * eased + drift,
           )
           node.container.y =
-            targetCenterY - (tile.selected ? eased * 2.5 : (1 - eased) * 2.5)
+            targetCenterY - (tile.selected ? eased * 2.8 : (1 - eased) * 2.2)
         },
         complete: () => {
           const rest = getRestScale(tile.selected)
@@ -995,6 +1012,10 @@ export async function createBoardScene(
   function drawSegments() {
     pathLayer.clear()
     currentModel.segments.forEach((segment) => {
+      const progress = segmentProgress.get(segment.key) ?? 1
+      if (progress <= 0.001) {
+        return
+      }
       const from = getCellCenter(segment.from.row, segment.from.col, metrics)
       const to = getCellCenter(segment.to.row, segment.to.col, metrics)
       const dx = to.x - from.x
@@ -1008,8 +1029,11 @@ export async function createBoardScene(
       const offsetY = unitY * fromInset
       const x1 = from.x + offsetX
       const y1 = from.y + offsetY
-      const x2 = to.x - unitX * toInset
-      const y2 = to.y - unitY * toInset
+      const fullX2 = to.x - unitX * toInset
+      const fullY2 = to.y - unitY * toInset
+      const easedProgress = segment.variant === 'event' ? easeOutQuart(progress) : easeOutCubic(progress)
+      const x2 = x1 + (fullX2 - x1) * easedProgress
+      const y2 = y1 + (fullY2 - y1) * easedProgress
       const color = segment.variant === 'active' ? ACTIVE_PATH : segment.variant === 'invalid' ? INVALID_PATH : EVENT_PATH
       const alpha =
         segment.variant === 'event'
@@ -1028,9 +1052,14 @@ export async function createBoardScene(
       pathLayer.lineTo(x2, y2)
       pathLayer.stroke()
 
+      if (easedProgress < 0.72) {
+        return
+      }
+
       const angle = Math.atan2(dy, dx)
-      const arrowX = (x1 + x2) / 2
-      const arrowY = (y1 + y2) / 2
+      const arrowTravel = 0.4 + (easedProgress - 0.72) / 0.28 * 0.12
+      const arrowX = x1 + (x2 - x1) * arrowTravel
+      const arrowY = y1 + (y2 - y1) * arrowTravel
       const arrowLength = metrics.cellWidth * 0.072
       const arrowHalfHeight = metrics.cellWidth * 0.045
       const arrowBaseX = arrowX - Math.cos(angle) * arrowLength
@@ -1134,6 +1163,34 @@ export async function createBoardScene(
     currentModel = model
     metrics = getBoardMetrics(app.renderer.width, app.renderer.height, currentModel.rows, currentModel.cols)
     drawBoardBackdrop()
+    pathDirty = true
+
+    const liveSegmentKeys = new Set(model.segments.map((segment) => segment.key))
+    segmentProgress.forEach((_progress, key) => {
+      if (!liveSegmentKeys.has(key)) {
+        segmentProgress.delete(key)
+      }
+    })
+    model.segments.forEach((segment) => {
+      if (segmentProgress.has(segment.key)) {
+        return
+      }
+      segmentProgress.set(segment.key, 0)
+      runAnimation({
+        id: `segment:${segment.key}`,
+        elapsedMs: 0,
+        delayMs: segment.delayMs,
+        durationMs: segment.variant === 'event' ? 180 : segment.variant === 'invalid' ? 120 : 100,
+        update: (progress) => {
+          segmentProgress.set(segment.key, progress)
+          pathDirty = true
+        },
+        complete: () => {
+          segmentProgress.set(segment.key, 1)
+          pathDirty = true
+        },
+      })
+    })
 
     const liveIds = new Set(model.tiles.map((tile) => tile.id))
     tileNodes.forEach((node, id) => {
