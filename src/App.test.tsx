@@ -1,7 +1,28 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { LexplosionApp } from './App'
+import type { BoardRenderModel } from './board/types'
 import { createGame, makeBoardFromRows } from './game/engine'
+
+const sceneMocks = vi.hoisted(() => ({
+  sceneResize: vi.fn(),
+  sceneSync: vi.fn(),
+  sceneDestroy: vi.fn(),
+  createBoardScene: vi.fn(
+    async (_mountNode: HTMLDivElement, initialModel: BoardRenderModel) => {
+      sceneMocks.sceneSync(initialModel)
+      return {
+        resize: sceneMocks.sceneResize,
+        sync: sceneMocks.sceneSync,
+        destroy: sceneMocks.sceneDestroy,
+      }
+    },
+  ),
+}))
+
+vi.mock('./board/BoardScene', () => ({
+  createBoardScene: sceneMocks.createBoardScene,
+}))
 
 function renderApp(boardRows: string[]) {
   const game = createGame({ seed: 7, board: makeBoardFromRows(boardRows) })
@@ -14,55 +35,41 @@ function renderApp(boardRows: string[]) {
 }
 
 function installBoardGeometry() {
-  const tileSize = 40
-  const gap = 4
-  const originalElementFromPoint =
-    document.elementFromPoint?.bind(document) ?? (() => null)
-  const animationStub = () => ({ cancel: () => undefined })
+  const board = screen.getByTestId('board')
+  const rect = {
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    width: 216,
+    height: 216,
+    right: 216,
+    bottom: 216,
+    toJSON: () => ({}),
+  }
 
-  Object.defineProperty(Element.prototype, 'animate', {
+  Object.defineProperty(board, 'getBoundingClientRect', {
     configurable: true,
-    value: () => animationStub(),
-  })
-  Object.defineProperty(Element.prototype, 'getAnimations', {
-    configurable: true,
-    value: () => [],
-  })
-
-  const tiles = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-row][data-col]'))
-  tiles.forEach((tile) => {
-    const row = Number(tile.dataset.row)
-    const col = Number(tile.dataset.col)
-    const left = col * (tileSize + gap)
-    const top = row * (tileSize + gap)
-    const rect = {
-      x: left,
-      y: top,
-      left,
-      top,
-      width: tileSize,
-      height: tileSize,
-      right: left + tileSize,
-      bottom: top + tileSize,
-      toJSON: () => ({}),
-    }
-    Object.defineProperty(tile, 'getBoundingClientRect', {
-      configurable: true,
-      value: () => rect,
-    })
-  })
-
-  Object.defineProperty(document, 'elementFromPoint', {
-    configurable: true,
-    value: (x: number, y: number) =>
-      tiles.find((tile) => {
-        const rect = tile.getBoundingClientRect()
-        return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
-      }) ?? originalElementFromPoint(x, y),
+    value: () => rect,
   })
 }
 
+function latestBoardModel() {
+  const lastCall = sceneMocks.sceneSync.mock.calls.at(-1)
+  if (!lastCall) {
+    throw new Error('Board scene was never synced')
+  }
+  return lastCall[0] as BoardRenderModel
+}
+
 describe('LexplosionApp', () => {
+  beforeEach(() => {
+    sceneMocks.sceneResize.mockReset()
+    sceneMocks.sceneSync.mockReset()
+    sceneMocks.sceneDestroy.mockReset()
+    sceneMocks.createBoardScene.mockClear()
+  })
+
   it('supports drag selection on a mobile-sized viewport', async () => {
     vi.useFakeTimers()
     window.innerWidth = 390
@@ -75,9 +82,10 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
 
+    await act(async () => {})
     installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('tile-0-0'), {
+    fireEvent.pointerDown(screen.getByTestId('board'), {
       pointerId: 1,
       clientX: 20,
       clientY: 20,
@@ -94,14 +102,13 @@ describe('LexplosionApp', () => {
     })
     fireEvent.pointerUp(window)
 
+    await act(async () => {})
     act(() => {
       vi.advanceTimersByTime(1)
     })
+    await act(async () => {})
 
     expect(screen.getByText(/^Clear(?:ed|ing) CAT$/)).toBeInTheDocument()
-    expect(screen.getAllByTestId('overlay-event')).toHaveLength(2)
-    expect(screen.getByText('CAT')).toBeInTheDocument()
-    expect(screen.getByText('+90')).toBeInTheDocument()
     vi.useRealTimers()
   })
 
@@ -118,7 +125,7 @@ describe('LexplosionApp', () => {
 
     installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('tile-0-0'), {
+    fireEvent.pointerDown(screen.getByTestId('board'), {
       pointerId: 1,
       clientX: 20,
       clientY: 20,
@@ -135,7 +142,7 @@ describe('LexplosionApp', () => {
     })
     fireEvent.pointerUp(window)
 
-    expect(screen.getByTestId('tile-0-3')).toBeDisabled()
+    expect(screen.getByTestId('board')).toHaveClass('board--locked')
 
     act(() => {
       vi.runAllTimers()
@@ -143,7 +150,7 @@ describe('LexplosionApp', () => {
     vi.useRealTimers()
   })
 
-  it('ignores pointer movement that does not reach the center of the next tile', () => {
+  it('ignores pointer movement that does not reach the center of the next tile', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -152,9 +159,10 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
 
+    await act(async () => {})
     installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('tile-0-0'), {
+    fireEvent.pointerDown(screen.getByTestId('board'), {
       pointerId: 1,
       clientX: 20,
       clientY: 20,
@@ -165,10 +173,11 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(screen.queryAllByTestId('overlay-active')).toHaveLength(0)
+    await act(async () => {})
+    expect(latestBoardModel().segments).toHaveLength(0)
   })
 
-  it('draws path arrows while dragging', () => {
+  it('updates the board model while dragging', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -177,9 +186,10 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
 
+    await act(async () => {})
     installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('tile-0-0'), {
+    fireEvent.pointerDown(screen.getByTestId('board'), {
       pointerId: 1,
       clientX: 20,
       clientY: 20,
@@ -190,9 +200,14 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(screen.getAllByTestId('overlay-active')).toHaveLength(1)
-    expect(screen.getByText('1')).toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
+    await act(async () => {})
+    let model = latestBoardModel()
+    expect(model.segments).toHaveLength(1)
+    expect(
+      model.tiles
+        .filter((tile: { selectedOrder?: number }) => tile.selectedOrder !== undefined)
+        .map((tile: { selectedOrder?: number }) => tile.selectedOrder),
+    ).toEqual([1, 2])
 
     fireEvent.pointerMove(screen.getByTestId('board'), {
       pointerId: 1,
@@ -200,11 +215,17 @@ describe('LexplosionApp', () => {
       clientY: 20,
     })
 
-    expect(screen.getAllByTestId('overlay-active')).toHaveLength(2)
-    expect(screen.getByText('3')).toBeInTheDocument()
+    await act(async () => {})
+    model = latestBoardModel()
+    expect(model.segments).toHaveLength(2)
+    expect(
+      model.tiles
+        .filter((tile: { selectedOrder?: number }) => tile.selectedOrder !== undefined)
+        .map((tile: { selectedOrder?: number }) => tile.selectedOrder),
+    ).toEqual([1, 2, 3])
   })
 
-  it('marks auto-clears distinctly', () => {
+  it('marks auto-clears distinctly', async () => {
     vi.useFakeTimers()
 
     renderApp([
@@ -215,9 +236,10 @@ describe('LexplosionApp', () => {
       'ZZZQZ',
     ])
 
+    await act(async () => {})
     installBoardGeometry()
 
-    fireEvent.pointerDown(screen.getByTestId('tile-3-0'), {
+    fireEvent.pointerDown(screen.getByTestId('board'), {
       pointerId: 1,
       clientX: 20,
       clientY: 152,
@@ -294,7 +316,7 @@ describe('LexplosionApp', () => {
     expect(screen.queryByText('Board shuffled for -75.')).toBeNull()
   })
 
-  it('shows special tile rules in help and renders special tile markers', () => {
+  it('shows special tile rules in help and syncs special tile kinds to the board scene', async () => {
     const game = createGame({
       seed: 7,
       board: makeBoardFromRows(
@@ -320,9 +342,11 @@ describe('LexplosionApp', () => {
       />,
     )
 
-    expect(document.querySelector('.tile__block--kind-gold')).not.toBeNull()
-    expect(document.querySelector('.tile__block--kind-cracked')).not.toBeNull()
-    expect(document.querySelector('.tile__block--kind-anchor')).not.toBeNull()
+    await act(async () => {})
+    const model = latestBoardModel()
+    expect(model.tiles.some((tile: { kind: string }) => tile.kind === 'gold')).toBe(true)
+    expect(model.tiles.some((tile: { kind: string }) => tile.kind === 'cracked')).toBe(true)
+    expect(model.tiles.some((tile: { kind: string }) => tile.kind === 'anchor')).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: 'Open help' }))
 

@@ -1,19 +1,24 @@
 import {
   type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
   useEffect,
   useEffectEvent,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
 import './App.css'
+import { GameBoardHost } from './board/GameBoardHost'
+import type {
+  BoardRenderLabel,
+  BoardRenderModel,
+  BoardRenderMotion,
+  BoardRenderSegment,
+  BoardRenderTile,
+} from './board/types'
 import {
   CLEAR_PRE_HOLD_MS,
   CLEAR_WAVE_HOLD_MS,
   CLEAR_WAVE_STAGGER_MS,
-  CONNECTOR_OFFSET,
   FALL_BASE_DURATION_MS,
   FALL_COLUMN_SWEEP_MS,
   FALL_DELAY_PER_ROW_MS,
@@ -39,7 +44,6 @@ import type {
   FoundWord,
   GameState,
   Position,
-  Tile,
   TurnPhase,
   TurnResult,
   TurnStep,
@@ -99,61 +103,10 @@ function formatWords(words: string[]): string {
   return words.join(' · ')
 }
 
-interface OverlaySegment {
-  key: string
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  midX: number
-  midY: number
-  angle: number
-  variant: 'active' | 'invalid' | 'event'
-  delayMs: number
-}
-
-interface FloatingLabel {
-  key: string
-  x: number
-  y: number
-  text: string
-  variant: 'word' | 'score' | 'auto-word' | 'auto-score'
-  delayMs: number
-  driftX: number
-}
-
-interface MotionSpec {
-  delayMs: number
-  durationMs: number
-  rowsMoved: number
-}
-
 function createEmptyBoard(size: number) {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, () => null as GameState['board'][number][number]),
   )
-}
-
-function renderTileIdentity(tile: Tile) {
-  if (tile.kind === 'gold') {
-    return <span aria-hidden="true" className="tile__identity tile__identity--gold" />
-  }
-
-  if (tile.kind === 'cracked') {
-    const durability = tile.state?.durability ?? 2
-    return (
-      <span
-        aria-hidden="true"
-        className={`tile__identity tile__identity--cracked tile__identity--cracked-${durability}`}
-      />
-    )
-  }
-
-  if (tile.kind === 'anchor') {
-    return <span aria-hidden="true" className="tile__identity tile__identity--anchor" />
-  }
-
-  return null
 }
 
 function buildIntroTurn(nextGame: GameState): TurnResult {
@@ -253,10 +206,6 @@ export function LexplosionApp({
   const [helpOpen, setHelpOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const dragPathRef = useRef<Position[]>([])
-  const isDraggingRef = useRef(false)
-  const activePointerIdRef = useRef<number | null>(null)
-  const boardRef = useRef<HTMLDivElement | null>(null)
-  const tileBlockRefs = useRef(new Map<string, HTMLSpanElement>())
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
 
@@ -342,7 +291,9 @@ export function LexplosionApp({
     setStatusMessage(
       turn.nextState.gameOver
         ? 'Board exhausted. No valid words remain.'
-        : `Cleared ${turn.nextState.lastWords[0]} for +${turn.nextState.lastScoreDelta}.`,
+        : turn.nextState.lastWords.length > 0
+          ? `Cleared ${turn.nextState.lastWords[0]} for +${turn.nextState.lastScoreDelta}.`
+          : 'Drag across adjacent letters to spell a word.',
     )
   })
 
@@ -365,7 +316,7 @@ export function LexplosionApp({
     return order
   }, [game.selectedPath])
   const fallMotionMap = useMemo(() => {
-    const motion = new Map<string, MotionSpec>()
+    const motion = new Map<string, BoardRenderMotion>()
 
     if (activeStep?.phase !== 'gravity' || !previousStep?.board) {
       return motion
@@ -385,8 +336,10 @@ export function LexplosionApp({
       }
 
       const rowsMoved = Math.max(1, position.row - previousPosition.row)
-      motion.set(hashPosition(position), {
-        rowsMoved,
+      motion.set(tile.id, {
+        kind: 'fall',
+        fromRow: previousPosition.row,
+        fromCol: previousPosition.col,
         delayMs:
           (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS +
           position.col * FALL_COLUMN_SWEEP_MS,
@@ -398,17 +351,8 @@ export function LexplosionApp({
   }, [activeStep, previousStep])
   const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
   const clearImpactActive = activeStep?.phase === 'clear'
-  const boardClassName = [
-    'board',
-    activeStep?.phase === 'clear' ? 'board--shake' : '',
-    clearImpactActive ? 'board--impact' : '',
-    activeStep?.phase === 'pause-refill' ? 'board--settled' : '',
-    inputLocked ? 'board--locked' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
   const spawnMotionMap = useMemo(() => {
-    const motion = new Map<string, MotionSpec>()
+    const motion = new Map<string, BoardRenderMotion>()
 
     if (activeStep?.phase !== 'refill') {
       return motion
@@ -429,9 +373,15 @@ export function LexplosionApp({
         .slice()
         .sort((left, right) => left.row - right.row)
         .forEach((position, spawnIndex) => {
+          const tile = activeStep.board[position.row]?.[position.col]
+          if (!tile) {
+            return
+          }
           const rowsMoved = position.row + 1
-          motion.set(hashPosition(position), {
-            rowsMoved,
+          motion.set(tile.id, {
+            kind: 'spawn',
+            fromRow: position.row - rowsMoved,
+            fromCol: position.col,
             delayMs: spawnIndex * SPAWN_DELAY_PER_ROW_MS + col * SPAWN_COLUMN_SWEEP_MS,
             durationMs:
               SPAWN_BASE_DURATION_MS + (rowsMoved - 1) * SPAWN_DURATION_PER_ROW_MS,
@@ -479,96 +429,6 @@ export function LexplosionApp({
     return () => window.clearTimeout(timeoutId)
   }, [animationDurations, clearWaveDuration, pendingTurn, spawnMotionWindow, stepIndex])
 
-  useLayoutEffect(() => {
-    const boardElement = boardRef.current
-    const boardRect = boardElement?.getBoundingClientRect() ?? null
-    const boardStyle = boardElement ? window.getComputedStyle(boardElement) : null
-    const rowGap = boardStyle ? Number.parseFloat(boardStyle.rowGap || boardStyle.gap || '0') : 0
-    const colGap = boardStyle ? Number.parseFloat(boardStyle.columnGap || boardStyle.gap || '0') : 0
-    const rowCount = displayBoard.length || 1
-    const colCount = displayBoard[0]?.length ?? 1
-    const cellWidth = boardRect ? (boardRect.width - colGap * (colCount - 1)) / colCount : 0
-    const cellHeight = boardRect ? (boardRect.height - rowGap * (rowCount - 1)) / rowCount : 0
-    const cellPitchY = cellHeight + rowGap
-
-    if (activeStep?.phase === 'gravity' && boardRect) {
-      displayBoard.forEach((row, rowIndex) => {
-        row.forEach((tile, colIndex) => {
-          if (!tile) {
-            return
-          }
-
-          const element = tileBlockRefs.current.get(tile.id)
-          const motion = fallMotionMap.get(hashPosition({ row: rowIndex, col: colIndex }))
-
-          if (!element || !motion) {
-            return
-          }
-
-          element.getAnimations().forEach((animation) => animation.cancel())
-          element.animate(
-            [
-              { transform: `translate3d(0, ${-motion.rowsMoved * cellPitchY}px, 0)` },
-              { transform: 'translate3d(0, 0, 0)' },
-            ],
-            {
-              duration: motion.durationMs,
-              delay: motion.delayMs,
-              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-              fill: 'both',
-            },
-          )
-        })
-      })
-    }
-
-    if (activeStep?.phase === 'refill' && boardRect) {
-      displayBoard.forEach((row, rowIndex) => {
-        row.forEach((tile, colIndex) => {
-          if (!tile) {
-            return
-          }
-
-          const element = tileBlockRefs.current.get(tile.id)
-          const motion = spawnMotionMap.get(hashPosition({ row: rowIndex, col: colIndex }))
-
-          if (!element || !motion) {
-            return
-          }
-
-          const startY = -motion.rowsMoved * cellPitchY
-          const driftX = ((colIndex % 2 === 0 ? -1 : 1) * cellWidth) / 48
-
-          element.getAnimations().forEach((animation) => animation.cancel())
-          element.animate(
-            [
-              {
-                opacity: 0,
-                transform: `translate3d(${driftX}px, ${startY}px, 0)`,
-              },
-              {
-                opacity: 1,
-                offset: 0.18,
-                transform: `translate3d(${driftX * 0.45}px, ${startY * 0.72}px, 0)`,
-              },
-              {
-                opacity: 1,
-                offset: 1,
-                transform: 'translate3d(0, 0, 0)',
-              },
-            ],
-            {
-              duration: motion.durationMs,
-              delay: motion.delayMs,
-              easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-              fill: 'both',
-            },
-          )
-        })
-      })
-    }
-  }, [activeStep?.phase, displayBoard, fallMotionMap, spawnMotionMap])
-
   useEffect(() => {
     return () => {
       if (invalidResetTimeoutRef.current !== null) {
@@ -577,41 +437,19 @@ export function LexplosionApp({
     }
   }, [])
 
-  const overlaySegments = useMemo(() => {
-    function buildSegments(positionsGroups: Position[][], variant: OverlaySegment['variant']) {
-      const rowCount = displayBoard.length
-      const colCount = displayBoard[0]?.length ?? 1
-      const segments: OverlaySegment[] = []
+  const boardSegments = useMemo(() => {
+    function buildSegments(
+      positionsGroups: Position[][],
+      variant: BoardRenderSegment['variant'],
+    ) {
+      const segments: BoardRenderSegment[] = []
 
       positionsGroups.forEach((positions, groupIndex) => {
         for (let index = 0; index < positions.length - 1; index += 1) {
-          const from = positions[index]
-          const to = positions[index + 1]
-          const deltaCol = to.col - from.col
-          const deltaRow = to.row - from.row
-          const magnitude = Math.hypot(deltaCol, deltaRow) || 1
-          const unitX = deltaCol / magnitude
-          const unitY = deltaRow / magnitude
-          const offsetX = (unitX * CONNECTOR_OFFSET * 100) / colCount
-          const offsetY = (unitY * CONNECTOR_OFFSET * 100) / rowCount
-          const fromCenterX = ((from.col + 0.5) / colCount) * 100
-          const fromCenterY = ((from.row + 0.5) / rowCount) * 100
-          const toCenterX = ((to.col + 0.5) / colCount) * 100
-          const toCenterY = ((to.row + 0.5) / rowCount) * 100
-          const x1 = fromCenterX + offsetX
-          const y1 = fromCenterY + offsetY
-          const x2 = toCenterX - offsetX
-          const y2 = toCenterY - offsetY
-
           segments.push({
             key: `${variant}-${groupIndex}-${index}`,
-            x1,
-            y1,
-            x2,
-            y2,
-            midX: (x1 + x2) / 2,
-            midY: (y1 + y2) / 2,
-            angle: (Math.atan2(deltaRow, deltaCol) * 180) / Math.PI,
+            from: positions[index],
+            to: positions[index + 1],
             variant,
             delayMs: variant === 'event' ? (index + 1) * CLEAR_WAVE_STAGGER_MS : 0,
           })
@@ -639,14 +477,12 @@ export function LexplosionApp({
     return clearGroups.length > 0 ? buildSegments(clearGroups, 'event') : []
   }, [activeStep?.phase, displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
 
-  const floatingLabels = useMemo(() => {
+  const floatingLabels = useMemo<BoardRenderLabel[]>(() => {
     if (displayedClearWordDetails.length === 0 || !visibleClearStep) {
       return []
     }
 
-    const rowCount = displayBoard.length
-    const colCount = displayBoard[0]?.length ?? 1
-    const wordLabels: FloatingLabel[] = displayedClearWordDetails.map((word, index) => {
+    const wordLabels: BoardRenderLabel[] = displayedClearWordDetails.map((word, index) => {
       const center = word.positions.reduce(
         (accumulator, position) => ({
           x: accumulator.x + position.col + 0.5,
@@ -658,8 +494,8 @@ export function LexplosionApp({
 
       return {
         key: `word-${word.word}-${index}`,
-        x: (center.x / count / colCount) * 100,
-        y: (center.y / count / rowCount) * 100,
+        x: center.x / count - 0.5,
+        y: center.y / count - 0.5,
         text: word.word,
         variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
         delayMs: 0,
@@ -680,7 +516,7 @@ export function LexplosionApp({
       {
         key: `score-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
         x: scoreCenter.x / wordLabels.length,
-        y: Math.max(8, scoreCenter.y / wordLabels.length - 15),
+        y: Math.max(0.35, scoreCenter.y / wordLabels.length - 0.75),
         text: `+${visibleClearStep.scoreDelta}`,
         variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
         delayMs: FLOAT_SCORE_DELAY_MS,
@@ -688,11 +524,76 @@ export function LexplosionApp({
       },
     ]
   }, [displayBoard, displayedClearWordDetails, visibleClearStep])
+  const boardTiles = useMemo<BoardRenderTile[]>(() => {
+    const tiles: BoardRenderTile[] = []
+
+    displayBoard.forEach((row, rowIndex) => {
+      row.forEach((tile, colIndex) => {
+        if (!tile) {
+          return
+        }
+
+        const positionKey = hashPosition({ row: rowIndex, col: colIndex })
+        tiles.push({
+          id: tile.id,
+          row: rowIndex,
+          col: colIndex,
+          letter: tile.letter,
+          kind: tile.kind,
+          durability: tile.state?.durability,
+          selected: highlightedPositions.selected.has(positionKey),
+          invalid: highlightedPositions.invalid.has(positionKey),
+          matched: highlightedPositions.matched.has(positionKey),
+          cleared: highlightedPositions.cleared.has(positionKey),
+          retained: highlightedPositions.retained.has(positionKey),
+          spawned: highlightedPositions.spawned.has(positionKey),
+          selectedOrder: selectedOrderMap.get(positionKey),
+          clearDelayMs: clearDelayMap.get(positionKey) ?? 0,
+          motion: fallMotionMap.get(tile.id) ?? spawnMotionMap.get(tile.id),
+        })
+      })
+    })
+
+    return tiles
+  }, [
+    clearDelayMap,
+    displayBoard,
+    fallMotionMap,
+    highlightedPositions.cleared,
+    highlightedPositions.invalid,
+    highlightedPositions.matched,
+    highlightedPositions.retained,
+    highlightedPositions.selected,
+    highlightedPositions.spawned,
+    selectedOrderMap,
+    spawnMotionMap,
+  ])
+  const boardModel = useMemo<BoardRenderModel>(
+    () => ({
+      rows: displayBoard.length,
+      cols: displayBoard[0]?.length ?? 1,
+      phase: activeStep?.phase ?? 'idle',
+      inputLocked,
+      clearImpactActive,
+      settled: activeStep?.phase === 'pause-refill',
+      tiles: boardTiles,
+      segments: boardSegments,
+      labels: floatingLabels,
+    }),
+    [
+      activeStep?.phase,
+      boardSegments,
+      boardTiles,
+      clearImpactActive,
+      displayBoard,
+      floatingLabels,
+      inputLocked,
+    ],
+  )
 
   function resetGame() {
     const nextGame = createGame()
     dragPathRef.current = []
-    isDraggingRef.current = false
     if (invalidResetTimeoutRef.current !== null) {
       window.clearTimeout(invalidResetTimeoutRef.current)
       invalidResetTimeoutRef.current = null
@@ -711,7 +612,6 @@ export function LexplosionApp({
 
     const nextGame = shuffleGame(game)
     dragPathRef.current = []
-    isDraggingRef.current = false
     setInvalidPath([])
     setPendingTurn(null)
     setStepIndex(-1)
@@ -769,13 +669,12 @@ export function LexplosionApp({
       return
     }
 
-    isDraggingRef.current = true
     setSelectedPath([position])
     setStatusMessage('Keep dragging through adjacent letters.')
   }
 
   function extendSelection(position: Position) {
-    if (!isDraggingRef.current || inputLocked || game.gameOver) {
+    if (inputLocked || game.gameOver) {
       return
     }
 
@@ -843,76 +742,6 @@ export function LexplosionApp({
     setStepIndex(0)
     setStatusMessage('Boom.')
   })
-
-  useEffect(() => {
-    function handlePointerUp() {
-      if (!isDraggingRef.current) {
-        return
-      }
-      isDraggingRef.current = false
-      finalizeSelection()
-    }
-
-    window.addEventListener('pointerup', handlePointerUp)
-    return () => window.removeEventListener('pointerup', handlePointerUp)
-  }, [])
-
-  function resolvePointerPosition(clientX: number, clientY: number): Position | null {
-    const boardElement = boardRef.current
-    if (!boardElement) {
-      return null
-    }
-
-    const target = document.elementFromPoint(clientX, clientY)
-    const tile = target?.closest<HTMLButtonElement>('[data-row][data-col]')
-    if (!tile || !boardElement.contains(tile) || tile.disabled) {
-      return null
-    }
-
-    const rect = tile.getBoundingClientRect()
-    const centerX = rect.left + rect.width / 2
-    const centerY = rect.top + rect.height / 2
-    const snapRadius = Math.min(rect.width, rect.height) * TILE_SNAP_RATIO
-    const distance = Math.hypot(clientX - centerX, clientY - centerY)
-
-    if (distance > snapRadius) {
-      return null
-    }
-
-    return {
-      row: Number(tile.dataset.row),
-      col: Number(tile.dataset.col),
-    }
-  }
-
-  function handleBoardPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!isDraggingRef.current || activePointerIdRef.current !== event.pointerId) {
-      return
-    }
-
-    const position = resolvePointerPosition(event.clientX, event.clientY)
-    if (position) {
-      extendSelection(position)
-    }
-  }
-
-  function handleTilePointerDown(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    position: Position,
-  ) {
-    activePointerIdRef.current = event.pointerId
-    event.currentTarget.setPointerCapture?.(event.pointerId)
-    startSelection(position)
-  }
-
-  function setTileBlockRef(tileId: string, node: HTMLSpanElement | null) {
-    if (node) {
-      tileBlockRefs.current.set(tileId, node)
-      return
-    }
-
-    tileBlockRefs.current.delete(tileId)
-  }
 
   return (
     <main
@@ -1086,176 +915,14 @@ export function LexplosionApp({
             <p className="event-banner__text">{runtimeStatusMessage}</p>
           </div>
 
-          <div
-            aria-live="polite"
-            className={boardClassName}
-            data-testid="board"
-            onPointerMove={handleBoardPointerMove}
-            ref={boardRef}
-          >
-            <svg
-              aria-hidden="true"
-              className="board__overlay"
-              data-testid="board-overlay"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              <defs>
-              </defs>
-              {overlaySegments.map((segment) => {
-                const arrowPath = 'M -1.3 -0.9 L 0 0 L -1.3 0.9'
-
-                return (
-                  <g key={segment.key}>
-                    <line
-                      className={
-                        segment.variant === 'event'
-                          ? 'board__segment-outline board__segment-outline--event'
-                          : 'board__segment-outline'
-                      }
-                      style={
-                        segment.variant === 'event'
-                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
-                          : undefined
-                      }
-                      x1={segment.x1}
-                      x2={segment.x2}
-                      y1={segment.y1}
-                      y2={segment.y2}
-                    />
-                    <line
-                      className={`board__segment board__segment--${segment.variant}`}
-                      data-testid={`overlay-${segment.variant}`}
-                      style={
-                        segment.variant === 'event'
-                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
-                          : undefined
-                      }
-                      x1={segment.x1}
-                      x2={segment.x2}
-                      y1={segment.y1}
-                      y2={segment.y2}
-                    />
-                    <path
-                      className={
-                        segment.variant === 'event'
-                          ? 'board__arrow-outline board__arrow-outline--event'
-                          : 'board__arrow-outline'
-                      }
-                      d={arrowPath}
-                      style={
-                        segment.variant === 'event'
-                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
-                          : undefined
-                      }
-                      transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
-                    />
-                    <path
-                      className={`board__arrow board__arrow--${segment.variant}`}
-                      d={arrowPath}
-                      style={
-                        segment.variant === 'event'
-                          ? ({ '--segment-delay': `${segment.delayMs}ms` } as CSSProperties)
-                          : undefined
-                      }
-                      transform={`translate(${segment.midX} ${segment.midY}) rotate(${segment.angle})`}
-                    />
-                  </g>
-                )
-              })}
-            </svg>
-            {floatingLabels.map((label) => (
-              <div
-                className={`board__float board__float--${label.variant}`}
-                key={label.key}
-                style={
-                  {
-                    left: `${label.x}%`,
-                    top: `${label.y}%`,
-                    '--float-delay': `${label.delayMs}ms`,
-                    '--float-drift-x': `${label.driftX}px`,
-                  } as CSSProperties
-                }
-              >
-                {label.text}
-              </div>
-            ))}
-            {displayBoard.map((row, rowIndex) =>
-              row.map((tile, colIndex) => {
-                const position = { row: rowIndex, col: colIndex }
-                const positionKey = hashPosition(position)
-                const stateClasses = [
-                  'tile',
-                  !tile ? 'tile--empty' : '',
-                  tile && highlightedPositions.spawned.has(positionKey)
-                    ? 'tile--spawning-slot'
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-                const blockClasses = [
-                  'tile__block',
-                  tile ? getTileDefinition(tile.kind).uiClassName : '',
-                  highlightedPositions.selected.has(positionKey)
-                    ? 'tile__block--selected'
-                    : '',
-                  highlightedPositions.invalid.has(positionKey)
-                    ? 'tile__block--invalid'
-                    : '',
-                  highlightedPositions.matched.has(positionKey)
-                    ? 'tile__block--matched'
-                    : '',
-                  highlightedPositions.cleared.has(positionKey)
-                    ? 'tile__block--clearing'
-                    : '',
-                  highlightedPositions.retained.has(positionKey)
-                    ? 'tile__block--retained'
-                    : '',
-                  highlightedPositions.cleared.has(positionKey) && isAutoClearVisible
-                    ? 'tile__block--clearing-auto'
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-                const clearDelay = clearDelayMap.get(positionKey) ?? 0
-                const tileStyle = highlightedPositions.cleared.has(positionKey)
-                  ? ({ '--clear-delay': `${clearDelay}ms` } as CSSProperties)
-                  : undefined
-
-                return (
-                  <button
-                    aria-label={`tile ${rowIndex + 1}-${colIndex + 1} ${tile?.letter ?? 'empty'}${tile ? ` ${getTileDefinition(tile.kind).label.toLowerCase()}` : ''}`}
-                    className={stateClasses}
-                    data-col={colIndex}
-                    data-row={rowIndex}
-                    data-testid={`tile-${rowIndex}-${colIndex}`}
-                    disabled={inputLocked || !tile}
-                    key={tile?.id ?? `empty-${rowIndex}-${colIndex}`}
-                    onPointerDown={(event) => handleTilePointerDown(event, position)}
-                    style={tileStyle}
-                    type="button"
-                  >
-                    {tile ? (
-                      <span
-                        className={blockClasses}
-                        ref={(node) => setTileBlockRef(tile.id, node)}
-                        style={tileStyle}
-                      >
-                        {highlightedPositions.selected.has(positionKey) ? (
-                          <span className="tile__order">
-                            {selectedOrderMap.get(positionKey)}
-                          </span>
-                        ) : null}
-                        {renderTileIdentity(tile)}
-                        <span className="tile__glyph">{tile.letter}</span>
-                      </span>
-                    ) : null}
-                  </button>
-                )
-              }),
-            )}
-          </div>
-
+          <GameBoardHost
+            inputLocked={inputLocked}
+            model={boardModel}
+            onExtendSelection={extendSelection}
+            onFinalizeSelection={finalizeSelection}
+            onStartSelection={startSelection}
+            snapRatio={TILE_SNAP_RATIO}
+          />
         </section>
       </section>
     </main>
