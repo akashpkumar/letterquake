@@ -57,6 +57,10 @@ interface LexplosionAppProps {
 type ConfirmAction = 'shuffle' | 'reset'
 
 const TILE_SNAP_RATIO = 0.34
+const FALL_STAGGER_MS = 72
+const FALL_COLUMN_STAGGER_MS = 56
+const REFILL_STAGGER_MS = 88
+const REFILL_COLUMN_STAGGER_MS = 64
 
 function HelpIcon() {
   return (
@@ -324,27 +328,45 @@ export function LexplosionApp({
 
     const previousPositions = buildTilePositionMap(previousStep.board)
 
+    const movedByColumn = new Map<number, Position[]>()
+
     activeStep.movedPositions.forEach((position) => {
-      const tile = activeStep.board[position.row]?.[position.col]
-      if (!tile) {
-        return
+      const existing = movedByColumn.get(position.col)
+      if (existing) {
+        existing.push(position)
+      } else {
+        movedByColumn.set(position.col, [position])
       }
+    })
 
-      const previousPosition = previousPositions.get(tile.id)
-      if (!previousPosition) {
-        return
-      }
+    movedByColumn.forEach((positions, col) => {
+      positions
+        .slice()
+        .sort((left, right) => right.row - left.row)
+        .forEach((position, orderIndex) => {
+          const tile = activeStep.board[position.row]?.[position.col]
+          if (!tile) {
+            return
+          }
 
-      const rowsMoved = Math.max(1, position.row - previousPosition.row)
-      motion.set(tile.id, {
-        kind: 'fall',
-        fromRow: previousPosition.row,
-        fromCol: previousPosition.col,
-        delayMs:
-          (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS +
-          position.col * FALL_COLUMN_SWEEP_MS,
-        durationMs: FALL_BASE_DURATION_MS + (rowsMoved - 1) * FALL_DURATION_PER_ROW_MS,
-      })
+          const previousPosition = previousPositions.get(tile.id)
+          if (!previousPosition) {
+            return
+          }
+
+          const rowsMoved = Math.max(1, position.row - previousPosition.row)
+          motion.set(tile.id, {
+            kind: 'fall',
+            fromRow: previousPosition.row,
+            fromCol: previousPosition.col,
+            delayMs:
+              (rowsMoved - 1) * FALL_DELAY_PER_ROW_MS +
+              col * FALL_COLUMN_SWEEP_MS +
+              col * FALL_COLUMN_STAGGER_MS +
+              orderIndex * FALL_STAGGER_MS,
+            durationMs: FALL_BASE_DURATION_MS + (rowsMoved - 1) * FALL_DURATION_PER_ROW_MS,
+          })
+        })
     })
 
     return motion
@@ -371,7 +393,7 @@ export function LexplosionApp({
     spawnedByColumn.forEach((positions, col) => {
       positions
         .slice()
-        .sort((left, right) => left.row - right.row)
+        .sort((left, right) => right.row - left.row)
         .forEach((position, spawnIndex) => {
           const tile = activeStep.board[position.row]?.[position.col]
           if (!tile) {
@@ -382,7 +404,11 @@ export function LexplosionApp({
             kind: 'spawn',
             fromRow: position.row - rowsMoved,
             fromCol: position.col,
-            delayMs: spawnIndex * SPAWN_DELAY_PER_ROW_MS + col * SPAWN_COLUMN_SWEEP_MS,
+            delayMs:
+              spawnIndex * SPAWN_DELAY_PER_ROW_MS +
+              col * SPAWN_COLUMN_SWEEP_MS +
+              col * REFILL_COLUMN_STAGGER_MS +
+              spawnIndex * REFILL_STAGGER_MS,
             durationMs:
               SPAWN_BASE_DURATION_MS + (rowsMoved - 1) * SPAWN_DURATION_PER_ROW_MS,
           })

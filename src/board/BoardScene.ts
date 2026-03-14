@@ -553,7 +553,6 @@ export async function createBoardScene(
     app.renderer.resize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)))
     metrics = getBoardMetrics(app.renderer.width, app.renderer.height, currentModel.rows, currentModel.cols)
     drawBoardBackdrop()
-    sync(currentModel)
   }
 
   function drawBoardBackdrop() {
@@ -641,7 +640,9 @@ export async function createBoardScene(
     node.container.zIndex = tile.selected ? 30 : tile.invalid ? 24 : tile.cleared ? 18 : 10
     const motion = tile.motion
     const moved = node.row !== tile.row || node.col !== tile.col
+    let motionActive = false
     if (motion && (moved || node.container.x === 0 && node.container.y === 0)) {
+      motionActive = true
       const from = getCellPosition(motion.fromRow, motion.fromCol, metrics)
       const fromCenterX = from.x + metrics.cellWidth / 2
       const fromCenterY = from.y + metrics.cellHeight / 2
@@ -852,10 +853,12 @@ export async function createBoardScene(
     }
 
     if (!tile.cleared) {
-      node.container.alpha = 1
-      const rest = getRestScale(tile.selected)
-      setTileScale(node, rest.x, rest.y)
-      node.container.y = targetCenterY
+      if (!motionActive) {
+        node.container.alpha = 1
+        const rest = getRestScale(tile.selected)
+        setTileScale(node, rest.x, rest.y)
+        node.container.y = targetCenterY
+      }
       node.glyph.y = node.glyphBaseY
       node.glyph.rotation = 0
     }
@@ -1025,7 +1028,6 @@ export async function createBoardScene(
   }
 
   drawBoardBackdrop()
-  sync(initialModel)
 
   return {
     resize,

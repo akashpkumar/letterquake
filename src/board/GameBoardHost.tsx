@@ -53,6 +53,7 @@ export function GameBoardHost({
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<BoardScene | null>(null)
   const sceneGenerationRef = useRef(0)
+  const lastSyncedModelRef = useRef<BoardRenderModel | null>(null)
   const draggingRef = useRef(false)
   const pointerIdRef = useRef<number | null>(null)
 
@@ -90,6 +91,8 @@ export function GameBoardHost({
       }
 
       resize()
+      scene.sync(model)
+      lastSyncedModelRef.current = model
 
       if (typeof ResizeObserver === 'function') {
         const observer = new ResizeObserver(resize)
@@ -114,7 +117,12 @@ export function GameBoardHost({
   }, [])
 
   useEffect(() => {
-    sceneRef.current?.sync(model)
+    if (!sceneRef.current || lastSyncedModelRef.current === model) {
+      return
+    }
+
+    sceneRef.current.sync(model)
+    lastSyncedModelRef.current = model
   }, [model])
 
   useEffect(() => {
