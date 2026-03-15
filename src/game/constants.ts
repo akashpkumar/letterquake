@@ -1,6 +1,10 @@
 import type { TurnPhase } from './types'
 
 export const BOARD_SIZE = 5
+export const CLEAR_BOARD_REFILL_COUNT = 14
+export const CLEAR_BOARD_SHUFFLE_CHARGES = 2
+export const CLEAR_BOARD_PERFECT_CLEAR_BONUS = 250
+export const CLEAR_BOARD_RESERVE_BONUS = 20
 export const SHUFFLE_PENALTY = 75
 export const TARGET_EASY_WORDS = 3
 export const REFILL_EASY_WORDS = 1

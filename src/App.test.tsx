@@ -266,6 +266,28 @@ describe('LexplosionApp', () => {
     vi.useRealTimers()
   })
 
+  it('defaults to clear-board mode and can switch to endless mode', async () => {
+    render(
+      <LexplosionApp
+        stepDurations={{ clear: 1, 'pause-clear': 1, gravity: 1, 'pause-refill': 1, refill: 1 }}
+      />,
+    )
+
+    await act(async () => {})
+
+    expect(screen.getByRole('button', { name: 'Switch to endless mode' })).toHaveTextContent(
+      'Clear Board',
+    )
+    expect(screen.getByText('Reserve')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to endless mode' }))
+
+    expect(screen.getByRole('button', { name: 'Switch to clear board mode' })).toHaveTextContent(
+      'Endless',
+    )
+    expect(screen.getByText('Mode')).toBeInTheDocument()
+  })
+
   it('renders score, cleared count, and game-over state', () => {
     renderApp([
       'QZXQZ',
@@ -275,9 +297,11 @@ describe('LexplosionApp', () => {
       'ZXQZX',
     ])
 
-    expect(screen.getByText('Score')).toBeInTheDocument()
-    expect(screen.getByText('Cleared')).toBeInTheDocument()
-    expect(screen.getByText(/No words left on the board/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'game stats' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Run over' })).toBeInTheDocument()
+    expect(screen.getByText(/No valid words remain on the board/i)).toBeInTheDocument()
+    expect(screen.getByText('Best Combo')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Restart run' })).toBeInTheDocument()
   })
 

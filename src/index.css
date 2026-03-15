@@ -25,11 +25,16 @@ body,
   min-width: 320px;
   min-height: 100%;
   margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body {
   min-height: 100vh;
   background: #000000;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
 }
 
 button,

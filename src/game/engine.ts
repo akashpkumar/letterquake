@@ -1,5 +1,9 @@
 import {
   BOARD_SIZE,
+  CLEAR_BOARD_REFILL_COUNT,
+  CLEAR_BOARD_PERFECT_CLEAR_BONUS,
+  CLEAR_BOARD_RESERVE_BONUS,
+  CLEAR_BOARD_SHUFFLE_CHARGES,
   CLUSTER_FOLLOWS,
   EASY_WORDS,
   FALLBACK_BOARD_ROWS,
@@ -15,7 +19,9 @@ import type {
   CreateGameOptions,
   FoundWord,
   GameState,
+  GameMode,
   Position,
+  RefillEntry,
   ResolutionResult,
   Tile,
   TileKind,
@@ -27,6 +33,7 @@ const MIN_WORD_LENGTH = 3
 const EASY_WORD_SET = new Set<string>(EASY_WORDS)
 const VOWELS = new Set(['A', 'E', 'I', 'O', 'U', 'Y'])
 const HARSH_CONSONANTS = new Set(['J', 'Q', 'V', 'X', 'Z'])
+const CLEAR_BOARD_TARGET_VOWEL_RATIO = 0.4
 
 let tileSequence = 0
 
@@ -542,6 +549,59 @@ function countTileKinds(board: Board): Record<TileKind, number> {
   return counts
 }
 
+function isBoardEmpty(board: Board): boolean {
+  return board.every((row) => row.every((tile) => tile === null))
+}
+
+function createEmptyBoard(): Board {
+  return Array.from({ length: BOARD_SIZE }, () =>
+    Array.from({ length: BOARD_SIZE }, () => null as Tile | null),
+  )
+}
+
+function collectEmptyPositions(board: Board): Position[] {
+  const positions: Position[] = []
+
+  for (let col = 0; col < board[0].length; col += 1) {
+    for (let row = 0; row < board.length; row += 1) {
+      if (board[row][col] === null) {
+        positions.push({ row, col })
+      }
+    }
+  }
+
+  return positions
+}
+
+function collectFilledPositions(board: Board): Position[] {
+  const positions: Position[] = []
+
+  board.forEach((row, rowIndex) => {
+    row.forEach((tile, colIndex) => {
+      if (tile) {
+        positions.push({ row: rowIndex, col: colIndex })
+      }
+    })
+  })
+
+  return positions
+}
+
+function countLettersInEntries(entries: RefillEntry[]) {
+  return entries.reduce(
+    (counts, entry) => {
+      if (VOWELS.has(entry.letter)) {
+        counts.vowels += 1
+      }
+      if (HARSH_CONSONANTS.has(entry.letter)) {
+        counts.harsh += 1
+      }
+      return counts
+    },
+    { vowels: 0, harsh: 0 },
+  )
+}
+
 function pickWeightedTileKind(board: Board, seed: number): [TileKind, number] {
   const counts = countTileKinds(board)
   const candidates = (Object.values(TILE_DEFINITIONS) as Array<(typeof TILE_DEFINITIONS)[TileKind]>)
@@ -567,6 +627,107 @@ function pickWeightedTileKind(board: Board, seed: number): [TileKind, number] {
   return [candidates[candidates.length - 1]?.kind ?? 'normal', updatedSeed]
 }
 
+function scoreReserveCandidate(
+  board: Board,
+  row: number,
+  col: number,
+  candidate: string,
+  planned: RefillEntry[],
+  remainingSlots: number,
+): number {
+  const nextEntries = [...planned, { letter: candidate, kind: 'normal' as const }]
+  const counts = countLettersInEntries(nextEntries)
+  const nextRatio = counts.vowels / nextEntries.length
+  let score = scoreCandidateLetter(board, row, col, candidate)
+
+  score -= Math.abs(nextRatio - CLEAR_BOARD_TARGET_VOWEL_RATIO) * 14
+
+  const harshRatio = counts.harsh / nextEntries.length
+  if (harshRatio > 0.18) {
+    score -= (harshRatio - 0.18) * 30
+  }
+
+  const neededVowels = Math.ceil((planned.length + remainingSlots) * CLEAR_BOARD_TARGET_VOWEL_RATIO)
+  if (VOWELS.has(candidate) && counts.vowels < neededVowels) {
+    score += 6
+  }
+  if (!VOWELS.has(candidate) && counts.vowels + remainingSlots < neededVowels) {
+    score -= 7
+  }
+  if (HARSH_CONSONANTS.has(candidate) && counts.harsh >= 2) {
+    score -= 9
+  }
+
+  return score
+}
+
+function chooseReserveLetter(
+  board: Board,
+  row: number,
+  col: number,
+  seed: number,
+  planned: RefillEntry[],
+  remainingSlots: number,
+): [string, number] {
+  let currentSeed = seed
+  let bestLetter = 'E'
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const [candidate, updatedSeed] =
+      attempt === 0 ? chooseRefillLetter(board, row, col, currentSeed) : pickWeightedLetter(currentSeed)
+    currentSeed = updatedSeed
+    const score = scoreReserveCandidate(board, row, col, candidate, planned, remainingSlots)
+    if (score > bestScore) {
+      bestScore = score
+      bestLetter = candidate
+    }
+  }
+
+  return [bestLetter, currentSeed]
+}
+
+function createRefillQueue(
+  board: Board,
+  seed: number,
+  count: number,
+): { queue: RefillEntry[]; seed: number } {
+  const queue: RefillEntry[] = []
+  const simulatedBoard = cloneBoard(board)
+  let currentSeed = seed
+
+  for (let index = 0; index < count; index += 1) {
+    const emptyPositions = collectEmptyPositions(simulatedBoard)
+    const previewPosition = emptyPositions[0] ?? {
+      row: index % BOARD_SIZE,
+      col: Math.floor(index / BOARD_SIZE) % BOARD_SIZE,
+    }
+    const [letter, updatedSeed] = chooseReserveLetter(
+      simulatedBoard,
+      previewPosition.row,
+      previewPosition.col,
+      currentSeed,
+      queue,
+      count - index - 1,
+    )
+    currentSeed = updatedSeed
+    queue.push({
+      letter,
+      kind: 'normal',
+    })
+
+    if (emptyPositions[0]) {
+      simulatedBoard[previewPosition.row][previewPosition.col] = {
+        id: `reserve-preview-${index}`,
+        letter,
+        kind: 'normal',
+      }
+    }
+  }
+
+  return { queue, seed: currentSeed }
+}
+
 function refillBoard(board: Board, seed: number): { board: Board; spawned: Position[]; seed: number } {
   const nextBoard = cloneBoard(board)
   const spawned: Position[] = []
@@ -587,6 +748,75 @@ function refillBoard(board: Board, seed: number): { board: Board; spawned: Posit
   }
 
   return { board: nextBoard, spawned, seed: currentSeed }
+}
+
+function refillBoardFromQueue(
+  board: Board,
+  refillQueue: RefillEntry[],
+): { board: Board; spawned: Position[]; refillQueue: RefillEntry[] } {
+  const nextBoard = cloneBoard(board)
+  const queue = refillQueue.slice()
+  const spawned: Position[] = []
+
+  for (let col = 0; col < board[0].length; col += 1) {
+    for (let row = board.length - 1; row >= 0; row -= 1) {
+      if (nextBoard[row][col] !== null || queue.length === 0) {
+        continue
+      }
+
+      const nextEntry = queue.shift()!
+      nextBoard[row][col] = makeTile(nextEntry.letter, nextEntry.kind)
+      spawned.push({ row, col })
+    }
+  }
+
+  return { board: nextBoard, spawned, refillQueue: queue }
+}
+
+function ensurePlayableRefill(
+  board: Board,
+  seed: number,
+  spawned: Position[],
+): { board: Board; seed: number } {
+  if (hasPlayableWord(board) || spawned.length === 0) {
+    return { board, seed }
+  }
+
+  const injected = injectEasyWords(board, seed, 1, spawned)
+  if (hasPlayableWord(injected.board)) {
+    return injected
+  }
+
+  return { board, seed: injected.seed }
+}
+
+function shuffleTilesIntoBoard(
+  board: Board,
+  seed: number,
+): { board: Board; seed: number } {
+  const tiles = cloneBoard(board).flat().filter((tile): tile is Tile => tile !== null)
+  let currentSeed = seed
+
+  for (let index = tiles.length - 1; index > 0; index -= 1) {
+    const [roll, updatedSeed] = randomFloat(currentSeed)
+    currentSeed = updatedSeed
+    const swapIndex = Math.floor(roll * (index + 1))
+    ;[tiles[index], tiles[swapIndex]] = [tiles[swapIndex], tiles[index]]
+  }
+
+  const nextBoard = createEmptyBoard()
+  let tileIndex = 0
+  for (let col = 0; col < BOARD_SIZE; col += 1) {
+    for (let row = BOARD_SIZE - 1; row >= 0; row -= 1) {
+      if (tileIndex >= tiles.length) {
+        break
+      }
+      nextBoard[row][col] = tiles[tileIndex]
+      tileIndex += 1
+    }
+  }
+
+  return { board: nextBoard, seed: currentSeed }
 }
 
 function countEasyStraightWords(board: Board): number {
@@ -767,6 +997,7 @@ function resolveGravityCombos(
     totalWordsCleared,
     highestCombo,
     rngSeed: 0,
+    refillQueue: [],
   }
 }
 
@@ -774,6 +1005,8 @@ export function resolveSelectedWord(
   board: Board,
   selection: Position[],
   rngSeed: number,
+  mode: GameMode = 'endless',
+  refillQueue: RefillEntry[] = [],
 ): ResolutionResult {
   const word = positionsToWord(board, selection)
   const resolvedWord: FoundWord = {
@@ -837,13 +1070,49 @@ export function resolveSelectedWord(
   ]
 
   const comboResult = resolveGravityCombos(gravityBoard, 2, moved)
-  const { board: refilledBoard, spawned, seed } = refillBoard(comboResult.board, rngSeed)
-  const injectedRefill = injectEasyWords(refilledBoard, seed, REFILL_EASY_WORDS, spawned)
+
+  if (mode === 'clear-board' && isBoardEmpty(comboResult.board)) {
+    steps.push(...comboResult.steps)
+
+    return {
+      board: comboResult.board,
+      steps,
+      scoreDelta: scoreDelta + comboResult.scoreDelta,
+      wordsCleared: [word, ...comboResult.wordsCleared],
+      totalWordsCleared: 1 + comboResult.totalWordsCleared,
+      highestCombo: Math.max(1, comboResult.highestCombo),
+      rngSeed,
+      refillQueue,
+    }
+  }
+
+  let finalBoard = comboResult.board
+  let finalSeed = rngSeed
+  let nextRefillQueue = refillQueue
+  let spawned: Position[] = []
+
+  if (mode === 'clear-board') {
+    const refillResult = refillBoardFromQueue(comboResult.board, refillQueue)
+    const rescuedRefill = ensurePlayableRefill(refillResult.board, rngSeed, refillResult.spawned)
+    finalBoard = rescuedRefill.board
+    finalSeed = rescuedRefill.seed
+    nextRefillQueue = refillResult.refillQueue
+    spawned = refillResult.spawned
+  } else {
+    const { board: refilledBoard, spawned: endlessSpawned, seed } = refillBoard(
+      comboResult.board,
+      rngSeed,
+    )
+    const injectedRefill = injectEasyWords(refilledBoard, seed, REFILL_EASY_WORDS, endlessSpawned)
+    finalBoard = injectedRefill.board
+    finalSeed = injectedRefill.seed
+    spawned = endlessSpawned
+  }
 
   steps.push(...comboResult.steps)
   steps.push({
     phase: 'refill',
-    board: cloneBoard(injectedRefill.board),
+    board: cloneBoard(finalBoard),
     words: [],
     matchedPositions: [],
     clearedPositions: [],
@@ -855,13 +1124,14 @@ export function resolveSelectedWord(
   })
 
   return {
-    board: injectedRefill.board,
+    board: finalBoard,
     steps,
     scoreDelta: scoreDelta + comboResult.scoreDelta,
     wordsCleared: [word, ...comboResult.wordsCleared],
     totalWordsCleared: 1 + comboResult.totalWordsCleared,
     highestCombo: Math.max(1, comboResult.highestCombo),
-    rngSeed: injectedRefill.seed,
+    rngSeed: finalSeed,
+    refillQueue: nextRefillQueue,
   }
 }
 
@@ -950,11 +1220,21 @@ export function hasPlayableWord(board: Board): boolean {
   return false
 }
 
-function baseState(board: Board, seed: number): GameState {
-  const gameOver = !hasPlayableWord(board)
+function baseState(
+  board: Board,
+  seed: number,
+  mode: GameMode,
+  refillQueue: RefillEntry[] = [],
+  shuffleCharges: number = mode === 'clear-board' ? CLEAR_BOARD_SHUFFLE_CHARGES : 0,
+): GameState {
+  const won = isBoardEmpty(board)
+  const gameOver = won || !hasPlayableWord(board)
 
   return {
+    mode,
     board,
+    refillQueue,
+    shuffleCharges,
     score: 0,
     turn: 0,
     totalWordsCleared: 0,
@@ -966,24 +1246,31 @@ function baseState(board: Board, seed: number): GameState {
     lastWords: [],
     lastScoreDelta: 0,
     gameOver,
+    won,
     rngSeed: seed,
   }
 }
 
-function createRandomBoard(seed: number): { board: Board; seed: number } {
-  const emptyBoard = Array.from({ length: BOARD_SIZE }, () =>
-    Array.from({ length: BOARD_SIZE }, () => null as Tile | null),
-  )
+function createRandomBoard(
+  seed: number,
+  mode: GameMode,
+): { board: Board; seed: number; refillQueue: RefillEntry[] } {
+  const emptyBoard = createEmptyBoard()
   const { board, seed: updatedSeed } = refillBoard(emptyBoard, seed)
-  const injected = injectEasyWords(board, updatedSeed, TARGET_EASY_WORDS)
+  const injected = injectEasyWords(board, updatedSeed, mode === 'clear-board' ? TARGET_EASY_WORDS + 1 : TARGET_EASY_WORDS)
+  const reserve =
+    mode === 'clear-board'
+      ? createRefillQueue(injected.board, injected.seed, CLEAR_BOARD_REFILL_COUNT)
+      : { queue: [] as RefillEntry[], seed: injected.seed }
 
   if (countEasyStraightWords(injected.board) >= 2) {
-    return { board: injected.board, seed: injected.seed }
+    return { board: injected.board, seed: reserve.seed, refillQueue: reserve.queue }
   }
 
   return {
     board: makeBoardFromRows(FALLBACK_BOARD_ROWS),
-    seed: injected.seed,
+    seed: reserve.seed,
+    refillQueue: reserve.queue,
   }
 }
 
@@ -992,22 +1279,65 @@ export function createGame(options?: number | CreateGameOptions): GameState {
     typeof options === 'number'
       ? options
       : options?.seed ?? (Date.now() >>> 0)
+  const mode = typeof options === 'object' ? options?.mode ?? 'endless' : 'endless'
+  const providedRefillQueue =
+    typeof options === 'object' ? options?.refillQueue?.slice() ?? null : null
+  const providedShuffleCharges =
+    typeof options === 'object' ? options?.shuffleCharges : undefined
 
   if (typeof options === 'object' && options?.board) {
-    return baseState(cloneBoard(options.board), seed)
+    const refillQueue =
+      providedRefillQueue ??
+      (mode === 'clear-board'
+        ? createRefillQueue(cloneBoard(options.board), seed, CLEAR_BOARD_REFILL_COUNT).queue
+        : [])
+    return baseState(cloneBoard(options.board), seed, mode, refillQueue, providedShuffleCharges)
   }
 
-  const { board, seed: nextGameSeed } = createRandomBoard(seed)
-  return baseState(board, nextGameSeed)
+  const { board, seed: nextGameSeed, refillQueue } = createRandomBoard(seed, mode)
+  return baseState(board, nextGameSeed, mode, refillQueue, providedShuffleCharges)
 }
 
 export function shuffleGame(state: GameState): GameState {
-  const { board, seed } = createRandomBoard(state.rngSeed)
+  if (state.mode === 'clear-board') {
+    if (state.shuffleCharges <= 0) {
+      return state
+    }
+
+    const shuffled = shuffleTilesIntoBoard(state.board, state.rngSeed)
+    const injected = hasPlayableWord(shuffled.board)
+      ? { board: shuffled.board, seed: shuffled.seed }
+      : injectEasyWords(shuffled.board, shuffled.seed, 1, collectFilledPositions(shuffled.board))
+    const won = isBoardEmpty(injected.board)
+    const gameOver = won || !hasPlayableWord(injected.board)
+
+    return {
+      ...state,
+      board: injected.board,
+      shuffleCharges: state.shuffleCharges - 1,
+      turn: state.turn + 1,
+      combo: 0,
+      turnStatus: gameOver ? 'game-over' : 'ready',
+      selectedPath: [],
+      animationQueue: [],
+      lastWords: [],
+      lastScoreDelta: 0,
+      gameOver,
+      won,
+      rngSeed: injected.seed,
+    }
+  }
+
+  const { board, seed, refillQueue } = createRandomBoard(state.rngSeed, state.mode)
   const score = Math.max(0, state.score - SHUFFLE_PENALTY)
+  const won = isBoardEmpty(board)
+  const gameOver = won || !hasPlayableWord(board)
 
   return {
     ...state,
     board,
+    refillQueue,
+    shuffleCharges: state.shuffleCharges,
     score,
     turn: state.turn + 1,
     combo: 0,
@@ -1016,7 +1346,8 @@ export function shuffleGame(state: GameState): GameState {
     animationQueue: [],
     lastWords: [],
     lastScoreDelta: -SHUFFLE_PENALTY,
-    gameOver: !hasPlayableWord(board),
+    gameOver,
+    won,
     rngSeed: seed,
   }
 }
@@ -1046,12 +1377,28 @@ export function submitSelection(state: GameState, selection: Position[]): TurnRe
     return { valid: false, reason: 'not-word', nextState: state, steps: [] }
   }
 
-  const resolution = resolveSelectedWord(state.board, selection, state.rngSeed)
-  const gameOver = !hasPlayableWord(resolution.board)
+  const resolution = resolveSelectedWord(
+    state.board,
+    selection,
+    state.rngSeed,
+    state.mode,
+    state.refillQueue,
+  )
+  const won = state.mode === 'clear-board' && isBoardEmpty(resolution.board)
+  const clearBoardBonus =
+    won
+      ? CLEAR_BOARD_PERFECT_CLEAR_BONUS +
+        resolution.refillQueue.length * CLEAR_BOARD_RESERVE_BONUS
+      : 0
+  const gameOver = won || !hasPlayableWord(resolution.board)
+  const totalScoreDelta = resolution.scoreDelta + clearBoardBonus
 
   const nextState: GameState = {
+    mode: state.mode,
     board: resolution.board,
-    score: state.score + resolution.scoreDelta,
+    refillQueue: resolution.refillQueue,
+    shuffleCharges: state.shuffleCharges,
+    score: state.score + totalScoreDelta,
     turn: state.turn + 1,
     totalWordsCleared: state.totalWordsCleared + resolution.totalWordsCleared,
     highestCombo: Math.max(state.highestCombo, resolution.highestCombo),
@@ -1060,8 +1407,9 @@ export function submitSelection(state: GameState, selection: Position[]): TurnRe
     selectedPath: [],
     animationQueue: resolution.steps,
     lastWords: resolution.wordsCleared,
-    lastScoreDelta: resolution.scoreDelta,
+    lastScoreDelta: totalScoreDelta,
     gameOver,
+    won,
     rngSeed: resolution.rngSeed,
   }
 

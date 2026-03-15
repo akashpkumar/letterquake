@@ -42,6 +42,7 @@ import { createGame, shuffleGame, submitSelection } from './game/engine'
 import { getTileDefinition, STARTER_TILE_KINDS } from './game/tileRegistry'
 import type {
   FoundWord,
+  GameMode,
   GameState,
   Position,
   TurnPhase,
@@ -56,7 +57,7 @@ interface LexplosionAppProps {
 
 type ConfirmAction = 'shuffle' | 'reset'
 
-const TILE_SNAP_RATIO = 0.34
+const TILE_SNAP_RATIO = 0.45
 const FALL_STAGGER_MS = 72
 const FALL_COLUMN_STAGGER_MS = 56
 const REFILL_STAGGER_MS = 88
@@ -114,6 +115,29 @@ function createEmptyBoard(size: number) {
   )
 }
 
+function countRemainingTiles(board: GameState['board']) {
+  return board.reduce(
+    (total, row) => total + row.reduce((rowTotal, tile) => rowTotal + (tile ? 1 : 0), 0),
+    0,
+  )
+}
+
+function getClearBoardGrade(remainingTiles: number, won: boolean) {
+  if (won) {
+    return 'Epicenter'
+  }
+  if (remainingTiles <= 2) {
+    return 'Aftershock'
+  }
+  if (remainingTiles <= 5) {
+    return 'Faultline'
+  }
+  if (remainingTiles <= 8) {
+    return 'Close Call'
+  }
+  return 'Buried'
+}
+
 function buildIntroTurn(nextGame: GameState): TurnResult {
   const spawnedPositions: Position[] = []
   nextGame.board.forEach((row, rowIndex) => {
@@ -151,12 +175,14 @@ function createInitialAppState(initialGame?: GameState) {
       pendingTurn: null as TurnResult | null,
       stepIndex: -1,
       statusMessage: initialGame.gameOver
-        ? 'No words left on the board. Start a new run.'
+        ? initialGame.won
+          ? 'Board cleared.'
+          : 'No words left on the board.'
         : 'Drag across adjacent letters to spell a word.',
     }
   }
 
-  const nextGame = createGame()
+  const nextGame = createGame({ mode: 'clear-board' })
   return {
     game: { ...nextGame, board: createEmptyBoard(nextGame.board.length) },
     pendingTurn: buildIntroTurn(nextGame),
@@ -229,6 +255,11 @@ export function LexplosionApp({
     to: initialState.game.lastScoreDelta,
     startedAt: 0,
   })
+  const remainingTiles = useMemo(() => countRemainingTiles(game.board), [game.board])
+  const clearBoardGrade = useMemo(
+    () => getClearBoardGrade(remainingTiles, game.won),
+    [game.won, remainingTiles],
+  )
 
   const animationDurations = useMemo(
     () => ({ ...STEP_DURATIONS, ...stepDurations }),
@@ -315,7 +346,9 @@ export function LexplosionApp({
     setStepIndex(-1)
     setStatusMessage(
       turn.nextState.gameOver
-        ? 'Board exhausted. No valid words remain.'
+        ? turn.nextState.won
+          ? 'Board cleared.'
+          : 'Board exhausted. No valid words remain.'
         : turn.nextState.lastWords.length > 0
           ? `Cleared ${turn.nextState.lastWords[0]} for +${turn.nextState.lastScoreDelta}.`
           : 'Drag across adjacent letters to spell a word.',
@@ -776,7 +809,11 @@ export function LexplosionApp({
   )
 
   function resetGame() {
-    const nextGame = createGame()
+    resetGameToMode(game.mode)
+  }
+
+  function resetGameToMode(mode: GameMode) {
+    const nextGame = createGame({ mode })
     dragPathRef.current = []
     if (invalidResetTimeoutRef.current !== null) {
       window.clearTimeout(invalidResetTimeoutRef.current)
@@ -789,22 +826,33 @@ export function LexplosionApp({
     setStatusMessage('Board filling in.')
   }
 
+  function switchMode() {
+    resetGameToMode(game.mode === 'clear-board' ? 'endless' : 'clear-board')
+  }
+
   function handleShuffle() {
     if (inputLocked) {
       return
     }
 
     const nextGame = shuffleGame(game)
+    if (nextGame === game) {
+      return
+    }
     dragPathRef.current = []
     setInvalidPath([])
     setPendingTurn(null)
     setStepIndex(-1)
     setGame(nextGame)
-    setStatusMessage(`Board shuffled for -${SHUFFLE_PENALTY}.`)
+    setStatusMessage(
+      game.mode === 'clear-board'
+        ? `Rescue shuffle used. ${nextGame.shuffleCharges} left.`
+        : `Board shuffled for -${SHUFFLE_PENALTY}.`,
+    )
   }
 
   function requestShuffle() {
-    if (inputLocked) {
+    if (inputLocked || (game.mode === 'clear-board' && game.shuffleCharges <= 0)) {
       return
     }
 
@@ -942,11 +990,28 @@ export function LexplosionApp({
     >
       <section className="app">
         <header className="app__header">
-          <h1>Letterquake</h1>
+          <h1>letterquake</h1>
           <div className="app__actions">
             <button
-              aria-label={`Shuffle board for -${SHUFFLE_PENALTY}`}
+              aria-label={
+                game.mode === 'clear-board'
+                  ? 'Switch to endless mode'
+                  : 'Switch to clear board mode'
+              }
+              className="app__mode-button"
+              onClick={switchMode}
+              type="button"
+            >
+              {game.mode === 'clear-board' ? 'Clear Board' : 'Endless'}
+            </button>
+            <button
+              aria-label={
+                game.mode === 'clear-board'
+                  ? `Use rescue shuffle (${game.shuffleCharges} left)`
+                  : `Shuffle board for -${SHUFFLE_PENALTY}`
+              }
               className="app__icon-button"
+              disabled={game.mode === 'clear-board' && game.shuffleCharges <= 0}
               onClick={requestShuffle}
               type="button"
             >
@@ -1002,6 +1067,24 @@ export function LexplosionApp({
             <span className="status-strip__label">Cleared</span>
             <strong className="status-strip__value">{game.totalWordsCleared}</strong>
           </div>
+          <div className="status-strip__divider" />
+          <div className="status-strip__group status-strip__group--compact">
+            <span className="status-strip__label">
+              {game.mode === 'clear-board' ? 'Reserve' : 'Mode'}
+            </span>
+            <strong className="status-strip__value">
+              {game.mode === 'clear-board' ? game.refillQueue.length : 'Endless'}
+            </strong>
+          </div>
+          <div className="status-strip__divider" />
+          <div className="status-strip__group status-strip__group--compact">
+            <span className="status-strip__label">
+              {game.mode === 'clear-board' ? 'Rescues' : 'Grade'}
+            </span>
+            <strong className="status-strip__value">
+              {game.mode === 'clear-board' ? game.shuffleCharges : 'Arcade'}
+            </strong>
+          </div>
         </section>
 
         {helpOpen ? (
@@ -1026,7 +1109,11 @@ export function LexplosionApp({
               <ul className="help-card__list">
                 <li>Drag through adjacent letters to spell a word.</li>
                 <li>Valid words explode and score points.</li>
-                <li>Blocks above fall down and new ones refill from the top.</li>
+                <li>
+                  {game.mode === 'clear-board'
+                    ? 'Clear Board mode uses a planned finite reserve. Empty the board before the run dies.'
+                    : 'Endless mode keeps refilling from the top so the run ends only when no valid words remain.'}
+                </li>
                 <li>Gravity can trigger bonus cascade clears automatically.</li>
                 {STARTER_TILE_KINDS.map((kind) => {
                   const definition = getTileDefinition(kind)
@@ -1036,7 +1123,11 @@ export function LexplosionApp({
                     </li>
                   )
                 })}
-                <li>Shuffle rescues a bad board for {SHUFFLE_PENALTY} points.</li>
+                <li>
+                  {game.mode === 'clear-board'
+                    ? `You get ${game.shuffleCharges} rescue shuffle${game.shuffleCharges === 1 ? '' : 's'} left this run.`
+                    : `Shuffle rescues a bad board for ${SHUFFLE_PENALTY} points.`}
+                </li>
               </ul>
             </section>
           </div>
@@ -1069,7 +1160,9 @@ export function LexplosionApp({
               </div>
               <p className="confirm-card__body">
                 {confirmAction === 'shuffle'
-                  ? `This will reshuffle the board and cost ${SHUFFLE_PENALTY} points.`
+                  ? game.mode === 'clear-board'
+                    ? `This will use 1 rescue shuffle and leave you with ${Math.max(0, game.shuffleCharges - 1)}.`
+                    : `This will reshuffle the board and cost ${SHUFFLE_PENALTY} points.`
                   : 'This will discard the current board and start a fresh run.'}
               </p>
               <div className="confirm-card__actions">
@@ -1092,6 +1185,78 @@ export function LexplosionApp({
           </div>
         ) : null}
 
+        {game.gameOver ? (
+          <div aria-modal="true" className="help-overlay" role="dialog">
+            <section aria-label="Run over" className="help-card game-over-card">
+              <div className="help-card__header">
+                <h2>{game.won ? 'Board Cleared' : 'Run Over'}</h2>
+              </div>
+              <p className="game-over-card__body">
+                {game.won
+                  ? 'You cleared every tile before the reserve ran dry.'
+                  : game.mode === 'clear-board'
+                    ? 'No words remain and the board still has letters on it.'
+                    : 'No valid words remain on the board.'}
+              </p>
+              <dl className="game-over-card__stats">
+                <div className="game-over-card__stat">
+                  <dt>Grade</dt>
+                  <dd>{game.mode === 'clear-board' ? clearBoardGrade : 'Arcade'}</dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>Score</dt>
+                  <dd>{game.score}</dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>Cleared</dt>
+                  <dd>{game.totalWordsCleared}</dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>Best Combo</dt>
+                  <dd>x{game.highestCombo}</dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>{game.mode === 'clear-board' ? 'Tiles Left' : 'Mode'}</dt>
+                  <dd>
+                    {game.mode === 'clear-board' ? remainingTiles : 'Endless'}
+                  </dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>{game.mode === 'clear-board' ? 'Reserve Left' : 'Final State'}</dt>
+                  <dd>
+                    {game.mode === 'clear-board' ? game.refillQueue.length : 'Dead Board'}
+                  </dd>
+                </div>
+                <div className="game-over-card__stat">
+                  <dt>{game.mode === 'clear-board' ? 'Rescues Left' : 'Final State'}</dt>
+                  <dd>{game.mode === 'clear-board' ? game.shuffleCharges : 'Dead Board'}</dd>
+                </div>
+              </dl>
+              <div className="confirm-card__actions">
+                {!game.won && game.mode === 'clear-board' && game.shuffleCharges > 0 ? (
+                  <button className="confirm-card__button" onClick={handleShuffle} type="button">
+                    Use Rescue
+                  </button>
+                ) : null}
+                <button
+                  className="confirm-card__button confirm-card__button--ghost"
+                  onClick={switchMode}
+                  type="button"
+                >
+                  Switch Mode
+                </button>
+                <button
+                  className="confirm-card__button confirm-card__button--danger"
+                  onClick={resetGame}
+                  type="button"
+                >
+                  Play Again
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         <section className={`board-panel${clearImpactActive ? ' board-panel--impact' : ''}`}>
           <GameBoardHost
             inputLocked={inputLocked}
@@ -1101,9 +1266,6 @@ export function LexplosionApp({
             onStartSelection={startSelection}
             snapRatio={TILE_SNAP_RATIO}
           />
-          {game.gameOver ? (
-            <p className="board-panel__seed">No words left on the board. Start a new run.</p>
-          ) : null}
         </section>
       </section>
     </main>

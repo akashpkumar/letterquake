@@ -130,6 +130,140 @@ describe('engine', () => {
     expect(result.board.flat().every((tile) => tile !== null)).toBe(true)
   })
 
+  it('supports clear-board mode with a finite refill reserve', () => {
+    const game = createGame({
+      seed: 23,
+      mode: 'clear-board',
+      refillQueue: [
+        { letter: 'A', kind: 'normal' },
+        { letter: 'E', kind: 'normal' },
+      ],
+      board: makeBoardFromRows([
+        'CAT..',
+        '.....',
+        '.....',
+        '.....',
+        '..DOG',
+      ]),
+    })
+
+    const result = submitSelection(game, [
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+      { row: 0, col: 2 },
+    ])
+
+    expect(result.valid).toBe(true)
+    expect(result.nextState.mode).toBe('clear-board')
+    expect(result.nextState.refillQueue).toHaveLength(0)
+    const visibleLetters = result.nextState.board
+      .flat()
+      .map((tile) => tile?.letter ?? null)
+      .filter(Boolean)
+    expect(visibleLetters).toContain('A')
+    expect(visibleLetters).toContain('E')
+    expect(result.nextState.board.flat().some((tile) => tile === null)).toBe(true)
+    for (let col = 0; col < result.nextState.board[0].length; col += 1) {
+      let seenGap = false
+      for (let row = result.nextState.board.length - 1; row >= 0; row -= 1) {
+        const tile = result.nextState.board[row][col]
+        if (!tile) {
+          seenGap = true
+          continue
+        }
+        expect(seenGap).toBe(false)
+      }
+    }
+  })
+
+  it('wins clear-board mode when the board is emptied', () => {
+    const game = createGame({
+      seed: 19,
+      mode: 'clear-board',
+      refillQueue: [
+        { letter: 'A', kind: 'normal' },
+        { letter: 'E', kind: 'normal' },
+      ],
+      board: makeBoardFromRows([
+        '.....',
+        '.....',
+        '.....',
+        '.....',
+        'CAT..',
+      ]),
+    })
+
+    const result = submitSelection(game, [
+      { row: 4, col: 0 },
+      { row: 4, col: 1 },
+      { row: 4, col: 2 },
+    ])
+
+    expect(result.valid).toBe(true)
+    expect(result.nextState.won).toBe(true)
+    expect(result.nextState.gameOver).toBe(true)
+    expect(result.nextState.lastScoreDelta).toBeGreaterThan(result.steps[0].scoreDelta)
+    expect(result.nextState.board.flat().every((tile) => tile === null)).toBe(true)
+    expect(result.nextState.refillQueue).toHaveLength(2)
+  })
+
+  it('uses a limited rescue shuffle in clear-board mode without resetting the run', () => {
+    const game = createGame({
+      seed: 11,
+      mode: 'clear-board',
+      board: makeBoardFromRows([
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
+      ]),
+      refillQueue: [
+        { letter: 'A', kind: 'normal' },
+        { letter: 'E', kind: 'normal' },
+      ],
+      shuffleCharges: 2,
+    })
+
+    const shuffled = shuffleGame(game)
+
+    expect(shuffled.mode).toBe('clear-board')
+    expect(shuffled.shuffleCharges).toBe(1)
+    expect(shuffled.refillQueue).toEqual(game.refillQueue)
+    expect(shuffled.score).toBe(game.score)
+    expect(shuffled.board.flat().filter(Boolean)).toHaveLength(game.board.flat().filter(Boolean).length)
+  })
+
+  it('does not create floating tiles when rescue shuffle injects a playable word on a sparse board', () => {
+    const game = createGame({
+      seed: 17,
+      mode: 'clear-board',
+      board: makeBoardFromRows([
+        '.....',
+        '.....',
+        'C....',
+        'A....',
+        'T....',
+      ]),
+      refillQueue: [],
+      shuffleCharges: 1,
+    })
+
+    const shuffled = shuffleGame(game)
+
+    for (let col = 0; col < shuffled.board[0].length; col += 1) {
+      let seenGap = false
+      for (let row = shuffled.board.length - 1; row >= 0; row -= 1) {
+        const tile = shuffled.board[row][col]
+        if (!tile) {
+          seenGap = true
+          continue
+        }
+        expect(seenGap).toBe(false)
+      }
+    }
+  })
+
   it('adds bonus score when a gold tile is used', () => {
     const board = makeBoardFromRows(
       [

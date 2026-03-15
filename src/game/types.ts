@@ -3,6 +3,7 @@ export interface Position {
   col: number
 }
 
+export type GameMode = 'clear-board' | 'endless'
 export type TileKind = 'normal' | 'gold' | 'cracked' | 'anchor'
 
 export interface TileState {
@@ -17,6 +18,10 @@ export interface Tile {
 }
 
 export type Board = Array<Array<Tile | null>>
+export interface RefillEntry {
+  letter: string
+  kind: TileKind
+}
 
 export type TurnPhase = 'clear' | 'pause-clear' | 'gravity' | 'pause-refill' | 'refill'
 export type TurnStatus = 'ready' | 'resolving' | 'game-over'
@@ -47,10 +52,14 @@ export interface ResolutionResult {
   totalWordsCleared: number
   highestCombo: number
   rngSeed: number
+  refillQueue: RefillEntry[]
 }
 
 export interface GameState {
+  mode: GameMode
   board: Board
+  refillQueue: RefillEntry[]
+  shuffleCharges: number
   score: number
   turn: number
   totalWordsCleared: number
@@ -62,6 +71,7 @@ export interface GameState {
   lastWords: string[]
   lastScoreDelta: number
   gameOver: boolean
+  won: boolean
   rngSeed: number
 }
 
@@ -75,4 +85,7 @@ export interface TurnResult {
 export interface CreateGameOptions {
   seed?: number
   board?: Board
+  mode?: GameMode
+  refillQueue?: RefillEntry[]
+  shuffleCharges?: number
 }
