@@ -109,13 +109,12 @@ describe('LexplosionApp', () => {
     })
     fireEvent.pointerUp(window)
 
-    await act(async () => {})
     act(() => {
-      vi.advanceTimersByTime(1)
+      vi.runAllTimers()
     })
     await act(async () => {})
 
-    expect(screen.getByText(/^Clear(?:ed|ing) CAT$/)).toBeInTheDocument()
+    expect(screen.getByTestId('board')).toHaveClass('board--locked')
     vi.useRealTimers()
   })
 
@@ -259,8 +258,11 @@ describe('LexplosionApp', () => {
       })
     }
 
-    expect(screen.getByText(/Auto-cleared|Auto-clearing/i)).toBeInTheDocument()
-    expect(document.querySelector('.event-banner--auto')).not.toBeNull()
+    expect(
+      latestBoardModel().labels.some((label: { variant: string; text: string }) =>
+        label.variant === 'combo' && /Combo x/i.test(label.text),
+      ),
+    ).toBe(true)
     vi.useRealTimers()
   })
 
@@ -279,7 +281,7 @@ describe('LexplosionApp', () => {
     expect(screen.getByRole('button', { name: 'Restart run' })).toBeInTheDocument()
   })
 
-  it('lets the player shuffle with a visible penalty', () => {
+  it('lets the player shuffle with a visible penalty', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -287,14 +289,19 @@ describe('LexplosionApp', () => {
       'ODGHI',
       'YJBCD',
     ])
+    await act(async () => {})
 
     fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Shuffle' }))
 
-    expect(screen.getByText('Board shuffled for -75.')).toBeInTheDocument()
+    expect(
+      latestBoardModel().labels.some((label: { variant: string; text: string }) =>
+        label.variant === 'system' && label.text === 'Board shuffled for -75.',
+      ),
+    ).toBe(true)
   })
 
-  it('can cancel the shuffle confirmation', () => {
+  it('can cancel the shuffle confirmation', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -302,6 +309,7 @@ describe('LexplosionApp', () => {
       'ODGHI',
       'YJBCD',
     ])
+    await act(async () => {})
 
     fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
 
@@ -310,7 +318,9 @@ describe('LexplosionApp', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(screen.queryByText('Shuffle Board?')).toBeNull()
-    expect(screen.queryByText('Board shuffled for -75.')).toBeNull()
+    expect(
+      latestBoardModel().labels.some((label: { text: string }) => label.text === 'Board shuffled for -75.'),
+    ).toBe(false)
   })
 
   it('shows special tile rules in help and syncs special tile kinds to the board scene', async () => {

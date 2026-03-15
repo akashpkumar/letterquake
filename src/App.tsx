@@ -103,10 +103,6 @@ function hashPosition(position: Position): string {
   return `${position.row}:${position.col}`
 }
 
-function formatWords(words: string[]): string {
-  return words.join(' · ')
-}
-
 function createEmptyBoard(size: number) {
   return Array.from({ length: size }, () =>
     Array.from({ length: size }, () => null as GameState['board'][number][number]),
@@ -247,10 +243,6 @@ export function LexplosionApp({
     return []
   }, [activeStep, previousStep])
 
-  const displayedClearWords = useMemo(
-    () => displayedClearWordDetails.map((word) => word.word),
-    [displayedClearWordDetails],
-  )
   const clearDelayMap = useMemo(
     () => buildClearDelayMap(displayedClearWordDetails),
     [displayedClearWordDetails],
@@ -271,22 +263,6 @@ export function LexplosionApp({
       : activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear'
         ? previousStep
         : null
-
-  const runtimeStatusMessage = activeStep
-    ? activeStep.phase === 'clear'
-      ? `${activeStep.combo > 1 ? 'Auto-clearing' : 'Clearing'} ${formatWords(
-          activeStep.words.map((word) => word.word),
-        )}`
-      : activeStep.phase === 'pause-clear' && displayedClearWords.length > 0
-        ? `${activeStep.combo > 1 ? 'Auto-cleared' : 'Cleared'} ${formatWords(
-            displayedClearWords,
-          )}`
-        : activeStep.phase === 'gravity'
-          ? 'Letters falling into place.'
-          : activeStep.phase === 'pause-refill'
-            ? 'Board settling.'
-            : 'New letters flowing in.'
-    : statusMessage
 
   const finishTurn = useEffectEvent((turn: TurnResult) => {
     setGame(turn.nextState)
@@ -371,7 +347,6 @@ export function LexplosionApp({
 
     return motion
   }, [activeStep, previousStep])
-  const isAutoClearVisible = Boolean(visibleClearStep && visibleClearStep.combo > 1)
   const clearImpactActive = activeStep?.phase === 'clear'
   const spawnMotionMap = useMemo(() => {
     const motion = new Map<string, BoardRenderMotion>()
@@ -504,59 +479,73 @@ export function LexplosionApp({
   }, [activeStep?.phase, displayBoard, displayedClearWordDetails, game.selectedPath, invalidPath])
 
   const floatingLabels = useMemo<BoardRenderLabel[]>(() => {
-    if (displayedClearWordDetails.length === 0 || !visibleClearStep) {
-      return []
-    }
+    const labels: BoardRenderLabel[] = []
+    const systemMessage =
+      statusMessage.startsWith('Board shuffled for -') ? statusMessage : null
 
     const centerX = (displayBoard[0]?.length ?? 1) / 2 - 0.5
     const centerY = displayBoard.length * 0.56 - 0.5
-    const queueStepMs = 320
-    const wordText =
-      displayedClearWordDetails.length === 1
-        ? displayedClearWordDetails[0].word
-        : displayedClearWordDetails.length === 2
-          ? `${displayedClearWordDetails[0].word} · ${displayedClearWordDetails[1].word}`
-          : `${displayedClearWordDetails[0].word} +${displayedClearWordDetails.length - 1}`
-    const wordLabels: BoardRenderLabel[] = [
-      {
-        key: `word-${visibleClearStep.combo}-${displayedClearWordDetails.map((word) => word.word).join('-')}`,
+    if (displayedClearWordDetails.length > 0 && visibleClearStep) {
+      const queueStepMs = 320
+      const wordText =
+        displayedClearWordDetails.length === 1
+          ? displayedClearWordDetails[0].word
+          : displayedClearWordDetails.length === 2
+            ? `${displayedClearWordDetails[0].word} · ${displayedClearWordDetails[1].word}`
+            : `${displayedClearWordDetails[0].word} +${displayedClearWordDetails.length - 1}`
+      const wordLabels: BoardRenderLabel[] = [
+        {
+          key: `word-${visibleClearStep.combo}-${displayedClearWordDetails.map((word) => word.word).join('-')}`,
+          x: centerX,
+          y: centerY,
+          text: wordText,
+          variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
+          delayMs: 0,
+          driftX: 0,
+        },
+      ]
+      const comboDelay = queueStepMs
+      const scoreDelay = comboDelay + (visibleClearStep.combo > 1 ? queueStepMs : 0)
+
+      labels.push(
+        ...wordLabels,
+        ...(visibleClearStep.combo > 1
+          ? [
+              {
+                key: `combo-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
+                x: centerX,
+                y: centerY,
+                text: `Combo x${visibleClearStep.combo}`,
+                variant: 'combo' as const,
+                delayMs: comboDelay,
+                driftX: 0,
+              },
+            ]
+          : []),
+        {
+          key: `score-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
+          x: centerX,
+          y: centerY,
+          text: `+${visibleClearStep.scoreDelta}`,
+          variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
+          delayMs: Math.max(FLOAT_SCORE_DELAY_MS, scoreDelay),
+          driftX: 0,
+        },
+      )
+    } else if (!pendingTurn && systemMessage && !game.gameOver) {
+      labels.push({
+        key: `system-${systemMessage}`,
         x: centerX,
         y: centerY,
-        text: wordText,
-        variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
+        text: systemMessage,
+        variant: 'system',
         delayMs: 0,
         driftX: 0,
-      },
-    ]
-    const comboDelay = queueStepMs
-    const scoreDelay = comboDelay + (visibleClearStep.combo > 1 ? queueStepMs : 0)
+      })
+    }
 
-    return [
-      ...wordLabels,
-      ...(visibleClearStep.combo > 1
-        ? [
-            {
-              key: `combo-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
-              x: centerX,
-              y: centerY,
-              text: `Combo x${visibleClearStep.combo}`,
-              variant: 'combo' as const,
-              delayMs: comboDelay,
-              driftX: 0,
-            },
-          ]
-        : []),
-      {
-        key: `score-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
-        x: centerX,
-        y: centerY,
-        text: `+${visibleClearStep.scoreDelta}`,
-        variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
-        delayMs: Math.max(FLOAT_SCORE_DELAY_MS, scoreDelay),
-        driftX: 0,
-      },
-    ]
-  }, [displayBoard, displayedClearWordDetails, visibleClearStep])
+    return labels
+  }, [displayBoard, displayedClearWordDetails, game.gameOver, pendingTurn, statusMessage, visibleClearStep])
   const boardTiles = useMemo<BoardRenderTile[]>(() => {
     const tiles: BoardRenderTile[] = []
 
@@ -944,12 +933,6 @@ export function LexplosionApp({
         ) : null}
 
         <section className={`board-panel${clearImpactActive ? ' board-panel--impact' : ''}`}>
-          <div
-            className={`event-banner${activeStep ? ` event-banner--${activeStep.phase}` : ''}${isAutoClearVisible ? ' event-banner--auto' : ''}${visibleClearStep ? ' event-banner--pulse' : ''}`}
-          >
-            <p className="event-banner__text">{runtimeStatusMessage}</p>
-          </div>
-
           <GameBoardHost
             inputLocked={inputLocked}
             model={boardModel}
@@ -958,6 +941,9 @@ export function LexplosionApp({
             onStartSelection={startSelection}
             snapRatio={TILE_SNAP_RATIO}
           />
+          {game.gameOver ? (
+            <p className="board-panel__seed">No words left on the board. Start a new run.</p>
+          ) : null}
         </section>
       </section>
     </main>

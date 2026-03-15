@@ -1,7 +1,7 @@
 import type { Position, TileKind, TurnPhase } from '../game/types'
 
 export type BoardPathVariant = 'active' | 'invalid' | 'event'
-export type BoardLabelVariant = 'word' | 'score' | 'auto-word' | 'auto-score' | 'combo'
+export type BoardLabelVariant = 'word' | 'score' | 'auto-word' | 'auto-score' | 'combo' | 'system'
 export type BoardMotionKind = 'fall' | 'spawn'
 
 export interface BoardRenderMotion {

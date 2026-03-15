@@ -102,6 +102,14 @@ const FLOAT_COMBO_STYLE = new TextStyle({
   fill: 0xf4ffb8,
   stroke: { color: 0x23320f, width: 5, join: 'round' },
 })
+const FLOAT_SYSTEM_STYLE = new TextStyle({
+  fontFamily: DISPLAY_FONT,
+  fontSize: 21,
+  fontWeight: '800',
+  letterSpacing: 0.5,
+  fill: 0xf4f4f5,
+  stroke: { color: 0x111214, width: 5, join: 'round' },
+})
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -155,6 +163,8 @@ function getLabelStyle(variant: BoardLabelVariant) {
       return FLOAT_SCORE_STYLE
     case 'combo':
       return FLOAT_COMBO_STYLE
+    case 'system':
+      return FLOAT_SYSTEM_STYLE
     case 'auto-word':
       return FLOAT_AUTO_WORD_STYLE
     case 'auto-score':
@@ -170,6 +180,8 @@ function getLabelTheme(variant: BoardLabelVariant) {
       return { fill: 0x4b360c, stroke: 0xa97e1f, alpha: 0.94 }
     case 'combo':
       return { fill: 0x243515, stroke: 0xa8d24e, alpha: 0.97 }
+    case 'system':
+      return { fill: 0x1a1b1f, stroke: 0x3d4048, alpha: 0.96 }
     case 'auto-word':
       return { fill: 0x143c2b, stroke: 0x53af7b, alpha: 0.95 }
     case 'auto-score':
@@ -529,8 +541,8 @@ function makeLabelNode(label: BoardRenderLabel) {
   })
   text.anchor.set(0.5)
   const theme = getLabelTheme(label.variant)
-  const paddingX = label.variant.includes('score') ? 18 : label.variant === 'combo' ? 16 : 14
-  const paddingY = label.variant.includes('score') ? 9 : label.variant === 'combo' ? 8 : 7
+  const paddingX = label.variant.includes('score') ? 18 : label.variant === 'combo' ? 16 : label.variant === 'system' ? 18 : 14
+  const paddingY = label.variant.includes('score') ? 9 : label.variant === 'combo' ? 8 : label.variant === 'system' ? 9 : 7
   const width = text.width + paddingX * 2
   const height = text.height + paddingY * 2
   background.fill({ color: theme.fill, alpha: theme.alpha })
@@ -1145,7 +1157,7 @@ export async function createBoardScene(
         id: `label:${label.key}`,
         elapsedMs: 0,
         delayMs: label.delayMs,
-        durationMs: label.variant === 'combo' ? 1080 : label.variant.includes('score') ? 1320 : 1180,
+        durationMs: label.variant === 'system' ? 1260 : label.variant === 'combo' ? 1080 : label.variant.includes('score') ? 1320 : 1180,
         update: (progress) => {
           const launchProgress = Math.min(progress / 0.28, 1)
           const launchEased = easeOutQuart(launchProgress)
@@ -1165,11 +1177,15 @@ export async function createBoardScene(
           const wobble =
             label.variant === 'combo'
               ? Math.sin(progress * Math.PI) * 0.025
+              : label.variant === 'system'
+                ? 0
               : label.variant.includes('score')
                 ? Math.sin(progress * Math.PI) * (label.variant.startsWith('auto') ? 0.055 : 0.035)
                 : 0
           const scale = label.variant === 'combo'
             ? 0.84 + easeOutBack(progress) * 0.18
+            : label.variant === 'system'
+              ? 0.94 + travelProgress * 0.04
             : label.variant.includes('score')
             ? 0.9 + easeOutBack(progress) * (0.16 + comboBoost)
             : 0.96 + travelProgress * (0.06 + comboBoost)
