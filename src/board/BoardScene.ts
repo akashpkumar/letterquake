@@ -94,6 +94,14 @@ const FLOAT_AUTO_SCORE_STYLE = new TextStyle({
   fill: 0xedfff5,
   stroke: { color: 0x10301d, width: 6, join: 'round' },
 })
+const FLOAT_COMBO_STYLE = new TextStyle({
+  fontFamily: DISPLAY_FONT,
+  fontSize: 22,
+  fontWeight: '900',
+  letterSpacing: 1.5,
+  fill: 0xf4ffb8,
+  stroke: { color: 0x23320f, width: 5, join: 'round' },
+})
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -145,6 +153,8 @@ function getLabelStyle(variant: BoardLabelVariant) {
   switch (variant) {
     case 'score':
       return FLOAT_SCORE_STYLE
+    case 'combo':
+      return FLOAT_COMBO_STYLE
     case 'auto-word':
       return FLOAT_AUTO_WORD_STYLE
     case 'auto-score':
@@ -158,6 +168,8 @@ function getLabelTheme(variant: BoardLabelVariant) {
   switch (variant) {
     case 'score':
       return { fill: 0x4b360c, stroke: 0xa97e1f, alpha: 0.94 }
+    case 'combo':
+      return { fill: 0x243515, stroke: 0xa8d24e, alpha: 0.97 }
     case 'auto-word':
       return { fill: 0x143c2b, stroke: 0x53af7b, alpha: 0.95 }
     case 'auto-score':
@@ -165,6 +177,13 @@ function getLabelTheme(variant: BoardLabelVariant) {
     default:
       return { fill: 0x202023, stroke: 0x434349, alpha: 0.95 }
   }
+}
+
+function getComboStrength(combo: number) {
+  if (combo <= 1) {
+    return 0
+  }
+  return Math.min(1, (combo - 1) / 3)
 }
 
 function getParticlePalette(kind: BoardRenderTile['kind']) {
@@ -510,8 +529,8 @@ function makeLabelNode(label: BoardRenderLabel) {
   })
   text.anchor.set(0.5)
   const theme = getLabelTheme(label.variant)
-  const paddingX = label.variant.includes('score') ? 18 : 14
-  const paddingY = label.variant.includes('score') ? 9 : 7
+  const paddingX = label.variant.includes('score') ? 18 : label.variant === 'combo' ? 16 : 14
+  const paddingY = label.variant.includes('score') ? 9 : label.variant === 'combo' ? 8 : 7
   const width = text.width + paddingX * 2
   const height = text.height + paddingY * 2
   background.fill({ color: theme.fill, alpha: theme.alpha })
@@ -564,6 +583,7 @@ export async function createBoardScene(
 
   const tileNodes = new Map<string, TileNode>()
   const labelNodes = new Map<string, LabelNode>()
+  const emittedLabelKeys = new Set<string>()
   const particleNodes = new Map<string, ParticleNode>()
   const segmentProgress = new Map<string, number>()
   const animations = new Map<string, Animation>()
@@ -587,7 +607,9 @@ export async function createBoardScene(
   function emitClearParticles(tile: BoardRenderTile, centerX: number, centerY: number) {
     const palette = getParticlePalette(tile.kind)
     const isGold = tile.kind === 'gold'
-    const pieceCount = isGold ? 28 : tile.kind === 'anchor' ? 12 : 14
+    const comboStrength = getComboStrength(currentModel.clearCombo)
+    const comboBonus = Math.round(comboStrength * (isGold ? 16 : 8))
+    const pieceCount = (isGold ? 28 : tile.kind === 'anchor' ? 12 : 14) + comboBonus
 
     for (let index = 0; index < pieceCount; index += 1) {
       const id = `particle:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
@@ -600,8 +622,8 @@ export async function createBoardScene(
 
       const angleSpread = isGold ? Math.PI * 1.22 : Math.PI * 1.05
       const angle = (-Math.PI / 2) + ((index / Math.max(1, pieceCount - 1)) - 0.5) * angleSpread
-      const speed = metrics.cellWidth * ((isGold ? 0.74 : 0.62) + (index % 4) * (isGold ? 0.1 : 0.08))
-      const lift = metrics.cellHeight * ((isGold ? 0.3 : 0.24) + (index % 5) * (isGold ? 0.05 : 0.04))
+      const speed = metrics.cellWidth * ((isGold ? 0.74 : 0.62) + comboStrength * 0.14 + (index % 4) * (isGold ? 0.1 : 0.08))
+      const lift = metrics.cellHeight * ((isGold ? 0.3 : 0.24) + comboStrength * 0.08 + (index % 5) * (isGold ? 0.05 : 0.04))
       const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * ((isGold ? 0.11 : 0.08) + (index % 3) * (isGold ? 0.04 : 0.03))))
       const spin = (index % 2 === 0 ? -1 : 1) * ((isGold ? 0.18 : 0.12) + (index % 4) * (isGold ? 0.05 : 0.04))
       const shardWidth = metrics.cellWidth * ((isGold ? 0.13 : 0.11) + (index % 3) * (isGold ? 0.024 : 0.02))
@@ -614,7 +636,7 @@ export async function createBoardScene(
         id,
         elapsedMs: 0,
         delayMs: tile.clearDelayMs ?? 0,
-        durationMs: (isGold ? 700 : 560) + (index % 4) * (isGold ? 90 : 70),
+        durationMs: (isGold ? 700 : 560) + comboStrength * 110 + (index % 4) * (isGold ? 90 : 70),
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const fade = 1 - eased
@@ -630,7 +652,7 @@ export async function createBoardScene(
           graphic.alpha = 1
 
           if (isDust) {
-            graphic.fill({ color: palette.smoke, alpha: fade * (isGold ? 0.44 : 0.34) })
+            graphic.fill({ color: palette.smoke, alpha: fade * ((isGold ? 0.44 : 0.34) + comboStrength * 0.12) })
             graphic.circle(0, 0, circleRadius * (1 + eased * 1.5))
             graphic.fill()
             return
@@ -639,7 +661,7 @@ export async function createBoardScene(
           graphic.stroke({
             color: index % 2 === 0 ? palette.secondary : palette.primary,
             width: Math.max(1, shardHeight * (isGold ? 0.72 : 0.55)),
-            alpha: fade * (isGold ? 0.88 : 0.7),
+            alpha: fade * ((isGold ? 0.88 : 0.7) + comboStrength * 0.14),
             cap: 'round',
           })
           graphic.moveTo(-streakLength * 0.35, 0)
@@ -647,7 +669,7 @@ export async function createBoardScene(
           graphic.stroke()
           graphic.fill({
             color: index % 2 === 0 ? palette.primary : palette.secondary,
-            alpha: fade * (isGold ? 1.08 : 1),
+            alpha: fade * ((isGold ? 1.08 : 1) + comboStrength * 0.12),
           })
           graphic.roundRect(
             -shardWidth / 2,
@@ -1084,6 +1106,11 @@ export async function createBoardScene(
 
   function syncLabels() {
     const liveKeys = new Set(currentModel.labels.map((label) => label.key))
+    emittedLabelKeys.forEach((key) => {
+      if (!liveKeys.has(key)) {
+        emittedLabelKeys.delete(key)
+      }
+    })
     labelNodes.forEach((node, key) => {
       if (!liveKeys.has(key)) {
         labelLayer.removeChild(node.container)
@@ -1091,40 +1118,61 @@ export async function createBoardScene(
       }
     })
 
-    currentModel.labels.forEach((label) => {
-      if (labelNodes.has(label.key)) {
+    const laneCount = 1
+    const boardCenterX = metrics.offsetX + (currentModel.cols * metrics.pitchX - metrics.gap) / 2
+    const originY = metrics.offsetY + (currentModel.rows * metrics.pitchY - metrics.gap) * 0.58
+
+    currentModel.labels.forEach((label, index) => {
+      if (labelNodes.has(label.key) || emittedLabelKeys.has(label.key)) {
         return
       }
 
       const node = makeLabelNode(label)
-      const x = metrics.offsetX + label.x * metrics.pitchX
-      const y = metrics.offsetY + label.y * metrics.pitchY
+      const stackIndex = Math.floor(index / laneCount)
+      const startX = boardCenterX + label.driftX * 0.12
+      const topBandY = metrics.offsetY + metrics.cellHeight * (0.46 + stackIndex * 0.82)
       const minY = node.text.height * 0.95 + 6
       const maxY = app.renderer.height - node.text.height * 0.8 - 6
-      const startY = clamp(y, minY, maxY)
-      node.container.position.set(x, startY)
+      const targetY = clamp(topBandY, minY, maxY)
+      const startY = clamp(originY + stackIndex * 10, targetY + 26, maxY)
+      const targetX = boardCenterX
+      node.container.position.set(startX, startY)
       node.container.alpha = 0
       labelLayer.addChild(node.container)
       labelNodes.set(label.key, node)
+      emittedLabelKeys.add(label.key)
       runAnimation({
         id: `label:${label.key}`,
         elapsedMs: 0,
         delayMs: label.delayMs,
-        durationMs: label.variant.includes('score') ? 920 : 820,
+        durationMs: label.variant === 'combo' ? 1080 : label.variant.includes('score') ? 1320 : 1180,
         update: (progress) => {
-          const eased = easeOutQuart(progress)
-          const arcX = Math.sin(progress * Math.PI) * label.driftX * 0.35
-          const liftDistance = Math.min(
-            label.variant.includes('score') ? 50 : 38,
-            Math.max(14, startY - minY + 6),
-          )
-          node.container.alpha = progress < 0.12 ? progress / 0.12 : 1 - progress
+          const launchProgress = Math.min(progress / 0.28, 1)
+          const launchEased = easeOutQuart(launchProgress)
+          const coastProgress = progress <= 0.28 ? 0 : (progress - 0.28) / 0.72
+          const coastEased = easeOutCubic(coastProgress)
+          const arcX = Math.sin(progress * Math.PI) * (label.driftX * 0.08)
+          const comboBoost = label.variant.startsWith('auto') ? 0.08 : 0
+          node.container.alpha =
+            progress < 0.08 ? progress / 0.08 : progress > 0.72 ? 1 - (progress - 0.72) / 0.28 : 1
+          const travelProgress = progress <= 0.28
+            ? launchEased * 0.58
+            : 0.58 + coastEased * 0.42
           node.container.position.set(
-            x + label.driftX * eased + arcX,
-            startY - liftDistance * eased,
+            startX + (targetX - startX) * travelProgress + arcX,
+            startY + (targetY - startY) * travelProgress,
           )
-          const wobble = label.variant.includes('score') ? Math.sin(progress * Math.PI) * 0.035 : 0
-          const scale = label.variant.includes('score') ? 0.9 + easeOutBack(progress) * 0.16 : 0.96 + eased * 0.06
+          const wobble =
+            label.variant === 'combo'
+              ? Math.sin(progress * Math.PI) * 0.025
+              : label.variant.includes('score')
+                ? Math.sin(progress * Math.PI) * (label.variant.startsWith('auto') ? 0.055 : 0.035)
+                : 0
+          const scale = label.variant === 'combo'
+            ? 0.84 + easeOutBack(progress) * 0.18
+            : label.variant.includes('score')
+            ? 0.9 + easeOutBack(progress) * (0.16 + comboBoost)
+            : 0.96 + travelProgress * (0.06 + comboBoost)
           node.container.scale.set(scale)
           node.container.rotation = wobble
         },
@@ -1141,17 +1189,24 @@ export async function createBoardScene(
     const centerX = app.renderer.width / 2
     const centerY = app.renderer.height / 2
     const maxRadius = Math.min(app.renderer.width, app.renderer.height) * 0.54
+    const comboStrength = getComboStrength(currentModel.clearCombo)
+    const pulseColor = comboStrength > 0 ? 0xb7ff87 : EVENT_PATH
     runAnimation({
       id: `impact:${Date.now()}`,
       elapsedMs: 0,
       delayMs: 0,
-      durationMs: 300,
+      durationMs: 300 + comboStrength * 120,
       update: (progress) => {
         const eased = easeOutQuart(progress)
         pulseLayer.clear()
-        pulseLayer.fill({ color: EVENT_PATH, alpha: (1 - eased) * 0.18 })
-        pulseLayer.circle(centerX, centerY, maxRadius * (0.45 + eased * 0.55))
+        pulseLayer.fill({ color: pulseColor, alpha: (1 - eased) * (0.18 + comboStrength * 0.12) })
+        pulseLayer.circle(centerX, centerY, maxRadius * ((0.45 - comboStrength * 0.04) + eased * (0.55 + comboStrength * 0.09)))
         pulseLayer.fill()
+        if (comboStrength > 0.01) {
+          pulseLayer.stroke({ color: 0xeaffcf, width: 2, alpha: (1 - eased) * (0.24 + comboStrength * 0.14) })
+          pulseLayer.circle(centerX, centerY, maxRadius * (0.34 + eased * 0.48))
+          pulseLayer.stroke()
+        }
       },
       complete: () => {
         pulseLayer.clear()

@@ -508,44 +508,51 @@ export function LexplosionApp({
       return []
     }
 
-    const wordLabels: BoardRenderLabel[] = displayedClearWordDetails.map((word, index) => {
-      const center = word.positions.reduce(
-        (accumulator, position) => ({
-          x: accumulator.x + position.col + 0.5,
-          y: accumulator.y + position.row + 0.5,
-        }),
-        { x: 0, y: 0 },
-      )
-      const count = word.positions.length || 1
-
-      return {
-        key: `word-${word.word}-${index}`,
-        x: center.x / count - 0.5,
-        y: center.y / count - 0.5,
-        text: word.word,
+    const centerX = (displayBoard[0]?.length ?? 1) / 2 - 0.5
+    const centerY = displayBoard.length * 0.56 - 0.5
+    const queueStepMs = 320
+    const wordText =
+      displayedClearWordDetails.length === 1
+        ? displayedClearWordDetails[0].word
+        : displayedClearWordDetails.length === 2
+          ? `${displayedClearWordDetails[0].word} · ${displayedClearWordDetails[1].word}`
+          : `${displayedClearWordDetails[0].word} +${displayedClearWordDetails.length - 1}`
+    const wordLabels: BoardRenderLabel[] = [
+      {
+        key: `word-${visibleClearStep.combo}-${displayedClearWordDetails.map((word) => word.word).join('-')}`,
+        x: centerX,
+        y: centerY,
+        text: wordText,
         variant: visibleClearStep.combo > 1 ? 'auto-word' : 'word',
         delayMs: 0,
-        driftX: (index % 2 === 0 ? -1 : 1) * 12,
-      }
-    })
-
-    const scoreCenter = wordLabels.reduce(
-      (accumulator, label) => ({
-        x: accumulator.x + label.x,
-        y: accumulator.y + label.y,
-      }),
-      { x: 0, y: 0 },
-    )
+        driftX: 0,
+      },
+    ]
+    const comboDelay = queueStepMs
+    const scoreDelay = comboDelay + (visibleClearStep.combo > 1 ? queueStepMs : 0)
 
     return [
       ...wordLabels,
+      ...(visibleClearStep.combo > 1
+        ? [
+            {
+              key: `combo-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
+              x: centerX,
+              y: centerY,
+              text: `Combo x${visibleClearStep.combo}`,
+              variant: 'combo' as const,
+              delayMs: comboDelay,
+              driftX: 0,
+            },
+          ]
+        : []),
       {
         key: `score-${visibleClearStep.combo}-${visibleClearStep.scoreDelta}`,
-        x: scoreCenter.x / wordLabels.length,
-        y: Math.max(0.35, scoreCenter.y / wordLabels.length - 0.75),
+        x: centerX,
+        y: centerY,
         text: `+${visibleClearStep.scoreDelta}`,
         variant: visibleClearStep.combo > 1 ? 'auto-score' : 'score',
-        delayMs: FLOAT_SCORE_DELAY_MS,
+        delayMs: Math.max(FLOAT_SCORE_DELAY_MS, scoreDelay),
         driftX: 0,
       },
     ]
@@ -599,6 +606,7 @@ export function LexplosionApp({
       rows: displayBoard.length,
       cols: displayBoard[0]?.length ?? 1,
       phase: activeStep?.phase ?? 'idle',
+      clearCombo: visibleClearStep?.combo ?? 0,
       inputLocked,
       clearImpactActive,
       settled: activeStep?.phase === 'pause-refill',
@@ -614,6 +622,7 @@ export function LexplosionApp({
       displayBoard,
       floatingLabels,
       inputLocked,
+      visibleClearStep?.combo,
     ],
   )
 

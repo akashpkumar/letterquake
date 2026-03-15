@@ -69,6 +69,45 @@ function collectUniquePositions(words: FoundWord[]): Position[] {
   return [...positions.values()]
 }
 
+function compareWordPriority(left: FoundWord, right: FoundWord) {
+  if (right.word.length !== left.word.length) {
+    return right.word.length - left.word.length
+  }
+
+  const leftStart = left.positions[0]
+  const rightStart = right.positions[0]
+  if (leftStart.row !== rightStart.row) {
+    return leftStart.row - rightStart.row
+  }
+  if (leftStart.col !== rightStart.col) {
+    return leftStart.col - rightStart.col
+  }
+
+  return left.word.localeCompare(right.word)
+}
+
+function filterOverlappingWords(words: FoundWord[]): FoundWord[] {
+  const occupied = new Set<string>()
+  const kept: FoundWord[] = []
+
+  words
+    .slice()
+    .sort(compareWordPriority)
+    .forEach((word) => {
+      const overlaps = word.positions.some((position) => occupied.has(hashPosition(position)))
+      if (overlaps) {
+        return
+      }
+
+      kept.push(word)
+      word.positions.forEach((position) => {
+        occupied.add(hashPosition(position))
+      })
+    })
+
+  return kept
+}
+
 function nextSeed(seed: number): number {
   return (seed * 1664525 + 1013904223) >>> 0
 }
@@ -645,7 +684,9 @@ function resolveGravityCombos(
   let activePositions = triggeredPositions.map(clonePosition)
 
   while (true) {
-    const words = filterWordsTouchingPositions(findStraightWords(nextBoard), activePositions)
+    const words = filterOverlappingWords(
+      filterWordsTouchingPositions(findStraightWords(nextBoard), activePositions),
+    )
     if (words.length === 0) {
       break
     }

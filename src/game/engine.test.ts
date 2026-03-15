@@ -335,6 +335,27 @@ describe('engine', () => {
     expect(result.totalWordsCleared).toBe(1)
   })
 
+  it('does not double-count overlapping auto-clear words', () => {
+    const result = resolveSelectedWord(
+      makeBoardFromRows([
+        'QZXQZ',
+        'QZXQZ',
+        'EATQZ',
+        'CATEZ',
+        'QZXQZ',
+      ]),
+      [
+        { row: 3, col: 0 },
+        { row: 3, col: 1 },
+        { row: 3, col: 2 },
+      ],
+      23,
+    )
+
+    expect(result.wordsCleared).toEqual(['CAT', 'EAT'])
+    expect(result.totalWordsCleared).toBe(2)
+  })
+
   it('resolves a selected word to a finite animation queue', () => {
     const result = resolveSelectedWord(
       makeBoardFromRows([
