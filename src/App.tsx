@@ -61,6 +61,11 @@ const FALL_STAGGER_MS = 72
 const FALL_COLUMN_STAGGER_MS = 56
 const REFILL_STAGGER_MS = 88
 const REFILL_COLUMN_STAGGER_MS = 64
+const SCORE_TWEEN_MS = 720
+
+function easeOutCubic(progress: number) {
+  return 1 - (1 - progress) ** 3
+}
 
 function HelpIcon() {
   return (
@@ -208,6 +213,22 @@ export function LexplosionApp({
   const dragPathRef = useRef<Position[]>([])
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
+  const [displayedScore, setDisplayedScore] = useState(initialState.game.score)
+  const displayedScoreRef = useRef(initialState.game.score)
+  const [displayedScoreDelta, setDisplayedScoreDelta] = useState(initialState.game.lastScoreDelta)
+  const displayedScoreDeltaRef = useRef(initialState.game.lastScoreDelta)
+  const scoreAnimationFrameRef = useRef<number | null>(null)
+  const scoreAnimationRef = useRef({
+    from: initialState.game.score,
+    to: initialState.game.score,
+    startedAt: 0,
+  })
+  const scoreDeltaAnimationFrameRef = useRef<number | null>(null)
+  const scoreDeltaAnimationRef = useRef({
+    from: initialState.game.lastScoreDelta,
+    to: initialState.game.lastScoreDelta,
+    startedAt: 0,
+  })
 
   const animationDurations = useMemo(
     () => ({ ...STEP_DURATIONS, ...stepDurations }),
@@ -263,6 +284,30 @@ export function LexplosionApp({
       : activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear'
         ? previousStep
         : null
+  const displayedScoreTarget = useMemo(() => {
+    if (!pendingTurn) {
+      return game.score
+    }
+
+    const settledStepCount =
+      stepIndex < 0 ? 0 : Math.min(stepIndex + 1, pendingTurn.steps.length)
+    const queuedDelta = pendingTurn.steps
+      .slice(0, settledStepCount)
+      .reduce((sum, step) => sum + step.scoreDelta, 0)
+
+    return game.score + queuedDelta
+  }, [game.score, pendingTurn, stepIndex])
+  const displayedScoreDeltaTarget = useMemo(() => {
+    if (!pendingTurn) {
+      return game.lastScoreDelta
+    }
+
+    const settledStepCount =
+      stepIndex < 0 ? 0 : Math.min(stepIndex + 1, pendingTurn.steps.length)
+    return pendingTurn.steps
+      .slice(0, settledStepCount)
+      .reduce((sum, step) => sum + step.scoreDelta, 0)
+  }, [game.lastScoreDelta, pendingTurn, stepIndex])
 
   const finishTurn = useEffectEvent((turn: TurnResult) => {
     setGame(turn.nextState)
@@ -431,12 +476,127 @@ export function LexplosionApp({
   }, [animationDurations, clearWaveDuration, pendingTurn, spawnMotionWindow, stepIndex])
 
   useEffect(() => {
+    displayedScoreRef.current = displayedScore
+  }, [displayedScore])
+
+  useEffect(() => {
+    displayedScoreDeltaRef.current = displayedScoreDelta
+  }, [displayedScoreDelta])
+
+  useEffect(() => {
+    if (scoreAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scoreAnimationFrameRef.current)
+      scoreAnimationFrameRef.current = null
+    }
+
+    const from = displayedScoreRef.current
+    const to = displayedScoreTarget
+    if (from === to) {
+      return
+    }
+
+    scoreAnimationRef.current = {
+      from,
+      to,
+      startedAt: performance.now(),
+    }
+
+    const tick = (now: number) => {
+      const { from: start, to: target, startedAt } = scoreAnimationRef.current
+      const progress = Math.min(1, (now - startedAt) / SCORE_TWEEN_MS)
+      const eased = easeOutCubic(progress)
+      const nextValue = Math.round(start + (target - start) * eased)
+      setDisplayedScore(nextValue)
+
+      if (progress < 1) {
+        scoreAnimationFrameRef.current = requestAnimationFrame(tick)
+      } else {
+        scoreAnimationFrameRef.current = null
+      }
+    }
+
+    scoreAnimationFrameRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (scoreAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scoreAnimationFrameRef.current)
+        scoreAnimationFrameRef.current = null
+      }
+    }
+  }, [displayedScoreTarget])
+
+  useEffect(() => {
+    if (scoreDeltaAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scoreDeltaAnimationFrameRef.current)
+      scoreDeltaAnimationFrameRef.current = null
+    }
+
+    const from = displayedScoreDeltaRef.current
+    const to = displayedScoreDeltaTarget
+    if (from === to) {
+      return
+    }
+
+    scoreDeltaAnimationRef.current = {
+      from,
+      to,
+      startedAt: performance.now(),
+    }
+
+    const tick = (now: number) => {
+      const { from: start, to: target, startedAt } = scoreDeltaAnimationRef.current
+      const progress = Math.min(1, (now - startedAt) / SCORE_TWEEN_MS)
+      const eased = easeOutCubic(progress)
+      const nextValue = Math.round(start + (target - start) * eased)
+      setDisplayedScoreDelta(nextValue)
+
+      if (progress < 1) {
+        scoreDeltaAnimationFrameRef.current = requestAnimationFrame(tick)
+      } else {
+        scoreDeltaAnimationFrameRef.current = null
+      }
+    }
+
+    scoreDeltaAnimationFrameRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (scoreDeltaAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scoreDeltaAnimationFrameRef.current)
+        scoreDeltaAnimationFrameRef.current = null
+      }
+    }
+  }, [displayedScoreDeltaTarget])
+
+  useEffect(() => {
     return () => {
       if (invalidResetTimeoutRef.current !== null) {
         window.clearTimeout(invalidResetTimeoutRef.current)
       }
+      if (scoreAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scoreAnimationFrameRef.current)
+      }
+      if (scoreDeltaAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scoreDeltaAnimationFrameRef.current)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (pendingTurn) {
+      return
+    }
+    setDisplayedScore(displayedScoreTarget)
+    displayedScoreRef.current = displayedScoreTarget
+    setDisplayedScoreDelta(displayedScoreDeltaTarget)
+    displayedScoreDeltaRef.current = displayedScoreDeltaTarget
+  }, [displayedScoreDeltaTarget, displayedScoreTarget, pendingTurn])
+
+  useEffect(() => {
+    setDisplayedScore(initialState.game.score)
+    displayedScoreRef.current = initialState.game.score
+    setDisplayedScoreDelta(initialState.game.lastScoreDelta)
+    displayedScoreDeltaRef.current = initialState.game.lastScoreDelta
+  }, [initialState.game.lastScoreDelta, initialState.game.score])
 
   const boardSegments = useMemo(() => {
     function buildSegments(
@@ -821,19 +981,19 @@ export function LexplosionApp({
                   : 'status-strip__value'
               }
             >
-              {game.score}
+              {displayedScore}
             </strong>
             <span
               className={
-                game.lastScoreDelta !== 0
+                displayedScoreDelta !== 0
                   ? 'status-strip__delta status-strip__delta--active'
                   : 'status-strip__delta'
               }
             >
-              {game.lastScoreDelta > 0
-                ? `+${game.lastScoreDelta}`
-                : game.lastScoreDelta < 0
-                  ? `${game.lastScoreDelta}`
+              {displayedScoreDelta > 0
+                ? `+${displayedScoreDelta}`
+                : displayedScoreDelta < 0
+                  ? `${displayedScoreDelta}`
                   : '+0'}
             </span>
           </div>
