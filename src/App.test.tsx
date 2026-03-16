@@ -417,8 +417,11 @@ describe('LexplosionApp', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open help' }))
 
-    expect(screen.getByText(/Gold: Adds bonus points/i)).toBeInTheDocument()
-    expect(screen.getByText(/Cracked: Needs two valid word hits/i)).toBeInTheDocument()
-    expect(screen.getByText(/Anchor: Stays fixed during gravity/i)).toBeInTheDocument()
+    expect(screen.getByText('Drag through neighbors')).toBeInTheDocument()
+    expect(screen.getByText('One use each')).toBeInTheDocument()
+    expect(screen.getByText('Board personalities')).toBeInTheDocument()
+    expect(screen.getByText('Gold')).toBeInTheDocument()
+    expect(screen.getByText('Cracked')).toBeInTheDocument()
+    expect(screen.getByText('Anchor')).toBeInTheDocument()
   })
 })

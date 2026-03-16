@@ -159,6 +159,24 @@ function RerollIcon() {
   )
 }
 
+function HelpTile({
+  letter,
+  selected = false,
+  dim = false,
+}: {
+  letter: string
+  selected?: boolean
+  dim?: boolean
+}) {
+  return (
+    <span
+      className={`help-demo__tile${selected ? ' help-demo__tile--selected' : ''}${dim ? ' help-demo__tile--dim' : ''}`}
+    >
+      {letter}
+    </span>
+  )
+}
+
 function hashPosition(position: Position): string {
   return `${position.row}:${position.col}`
 }
@@ -1368,28 +1386,95 @@ export function LexplosionApp({
                   ×
                 </button>
               </div>
-              <ul className="help-card__list">
-                <li>Drag through adjacent letters to spell a word.</li>
-                <li>Valid words explode and score points.</li>
-                <li>
-                  {game.mode === 'clear-board'
-                    ? 'Clear Board mode uses a planned finite reserve. Empty the board before the run dies.'
-                    : 'Endless mode keeps refilling from the top so the run ends only when no valid words remain.'}
-                </li>
-                <li>Gravity can trigger bonus cascade clears automatically.</li>
-                <li>Each run gives you one Break, one Swap, and one Roll lifeline.</li>
-                {STARTER_TILE_KINDS.map((kind) => {
-                  const definition = getTileDefinition(kind)
-                  return (
-                    <li key={kind}>
-                      {definition.label}: {definition.description}
-                    </li>
-                  )
-                })}
-                <li>Break opens a fault under one tile and lets the board resolve from the impact.</li>
-                <li>Swap trades any two tiles anywhere on the board.</li>
-                <li>Roll randomizes one tile into a new letter.</li>
-              </ul>
+              <div className="help-stack">
+                <section className="help-section">
+                  <div className="help-section__header">
+                    <span className="help-section__eyebrow">Goal</span>
+                    <h3>{game.mode === 'clear-board' ? 'Leave no tiles behind' : 'Keep the board alive'}</h3>
+                  </div>
+                  <div className="help-goal">
+                    <div className="help-goal__hero">
+                      <strong>{game.mode === 'clear-board' ? '0' : '∞'}</strong>
+                      <span>{game.mode === 'clear-board' ? 'tiles left' : 'chase score'}</span>
+                    </div>
+                    <p>
+                      {game.mode === 'clear-board'
+                        ? 'Use the reserve and your three powers to clear every tile before the board bricks.'
+                        : 'Spell words, trigger cascades, and survive until no valid words remain.'}
+                    </p>
+                  </div>
+                </section>
+
+                <section className="help-section">
+                  <div className="help-section__header">
+                    <span className="help-section__eyebrow">Selection</span>
+                    <h3>Drag through neighbors</h3>
+                  </div>
+                  <div className="help-demo">
+                    <div className="help-demo__row">
+                      <HelpTile letter="C" selected />
+                      <span className="help-demo__link" />
+                      <HelpTile letter="A" selected />
+                      <span className="help-demo__link" />
+                      <HelpTile letter="T" selected />
+                      <HelpTile letter="Q" dim />
+                      <HelpTile letter="Z" dim />
+                    </div>
+                    <p>Build a connected path. Valid words explode, drop the board, and can chain into auto-clears.</p>
+                  </div>
+                </section>
+
+                <section className="help-section">
+                  <div className="help-section__header">
+                    <span className="help-section__eyebrow">Powers</span>
+                    <h3>One use each</h3>
+                  </div>
+                  <div className="help-powers">
+                    <article className="help-power-card">
+                      <div className="help-power-card__title">
+                        <BreakIcon />
+                        <strong>Break</strong>
+                      </div>
+                      <p>Shatter one tile, trigger gravity, and let the quake ripple outward.</p>
+                    </article>
+                    <article className="help-power-card">
+                      <div className="help-power-card__title">
+                        <SwapIcon />
+                        <strong>Swap</strong>
+                      </div>
+                      <p>Pick two tiles anywhere on the board and trade their positions.</p>
+                    </article>
+                    <article className="help-power-card">
+                      <div className="help-power-card__title">
+                        <RerollIcon />
+                        <strong>Roll</strong>
+                      </div>
+                      <p>Spin one tile into a new random letter when the board needs a bailout.</p>
+                    </article>
+                  </div>
+                </section>
+
+                <section className="help-section">
+                  <div className="help-section__header">
+                    <span className="help-section__eyebrow">Specials</span>
+                    <h3>Board personalities</h3>
+                  </div>
+                  <div className="help-specials">
+                    {STARTER_TILE_KINDS.map((kind) => {
+                      const definition = getTileDefinition(kind)
+                      return (
+                        <article key={kind} className="help-special-card">
+                          <span className={`help-special-card__swatch help-special-card__swatch--${kind}`} />
+                          <div>
+                            <strong>{definition.label}</strong>
+                            <p>{definition.description}</p>
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+              </div>
             </section>
           </div>
         ) : null}
@@ -1449,6 +1534,21 @@ export function LexplosionApp({
               <div className="help-card__header">
                 <h2>{game.won ? 'Board Cleared' : 'Run Over'}</h2>
               </div>
+              <div className="game-over-card__hero">
+                <span className="game-over-card__hero-label">
+                  {game.mode === 'clear-board' ? 'Tiles Left' : 'Final Score'}
+                </span>
+                <strong className="game-over-card__hero-value">
+                  {game.mode === 'clear-board' ? remainingTiles : game.score}
+                </strong>
+                <span className="game-over-card__hero-subtitle">
+                  {game.mode === 'clear-board'
+                    ? game.won
+                      ? 'Perfect clear.'
+                      : `${clearBoardGrade} run`
+                    : `Best combo x${game.highestCombo}`}
+                </span>
+              </div>
               <p className="game-over-card__body">
                 {game.won
                   ? 'You cleared every tile before the reserve ran dry.'
@@ -1457,10 +1557,6 @@ export function LexplosionApp({
                     : 'No valid words remain on the board.'}
               </p>
               <dl className="game-over-card__stats">
-                <div className="game-over-card__stat">
-                  <dt>Grade</dt>
-                  <dd>{game.mode === 'clear-board' ? clearBoardGrade : 'Arcade'}</dd>
-                </div>
                 <div className="game-over-card__stat">
                   <dt>Score</dt>
                   <dd>{game.score}</dd>
@@ -1473,22 +1569,12 @@ export function LexplosionApp({
                   <dt>Best Combo</dt>
                   <dd>x{game.highestCombo}</dd>
                 </div>
-                <div className="game-over-card__stat">
-                  <dt>{game.mode === 'clear-board' ? 'Tiles Left' : 'Mode'}</dt>
-                  <dd>
-                    {game.mode === 'clear-board' ? remainingTiles : 'Endless'}
-                  </dd>
-                </div>
-                <div className="game-over-card__stat">
-                  <dt>{game.mode === 'clear-board' ? 'Reserve Left' : 'Final State'}</dt>
-                  <dd>
-                    {game.mode === 'clear-board' ? game.refillQueue.length : 'Dead Board'}
-                  </dd>
-                </div>
-                <div className="game-over-card__stat">
-                  <dt>Powers Left</dt>
-                  <dd>{lifelines.break + lifelines.swap + lifelines.reroll}</dd>
-                </div>
+                {game.mode === 'clear-board' ? (
+                  <div className="game-over-card__stat">
+                    <dt>Reserve Left</dt>
+                    <dd>{game.refillQueue.length}</dd>
+                  </div>
+                ) : null}
               </dl>
               {game.won && game.mode === 'clear-board' ? (
                 <div className="game-over-card__bonus">
