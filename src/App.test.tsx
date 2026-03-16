@@ -289,7 +289,7 @@ describe('LexplosionApp', () => {
     vi.useRealTimers()
   })
 
-  it('arms break rescue mode in clear-board runs', async () => {
+  it('arms break power and shows the new powers strip', async () => {
     const game = createGame({
       seed: 7,
       mode: 'clear-board',
@@ -311,10 +311,12 @@ describe('LexplosionApp', () => {
 
     await act(async () => {})
 
-    fireEvent.click(screen.getByRole('button', { name: /Use break rescue/i }))
+    expect(screen.getByLabelText('powers')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Arm break power' }))
     await act(async () => {})
 
-    expect(screen.getByText(/Break armed: tap a tile/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel break power' })).toHaveClass('power-card--active')
   })
 
   it('renders score, cleared count, and game-over state', () => {
@@ -334,7 +336,7 @@ describe('LexplosionApp', () => {
     expect(screen.getByRole('button', { name: 'Restart run' })).toBeInTheDocument()
   })
 
-  it('lets the player shuffle with a visible penalty', async () => {
+  it('lets the player arm and spend the swap power', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -343,18 +345,24 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
     await act(async () => {})
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Shuffle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Arm swap power' }))
+    fireEvent.pointerDown(board, {
+      pointerId: 1,
+      ...centerOf(0, 0),
+    })
+    fireEvent.pointerUp(window)
+    fireEvent.pointerDown(board, {
+      pointerId: 1,
+      ...centerOf(1, 1),
+    })
+    fireEvent.pointerUp(window)
 
-    expect(
-      latestBoardModel().labels.some((label: { variant: string; text: string }) =>
-        label.variant === 'system' && label.text === 'Board shuffled for -75.',
-      ),
-    ).toBe(true)
+    expect(screen.getByRole('button', { name: 'Arm swap power' })).toBeDisabled()
   })
 
-  it('can cancel the shuffle confirmation', async () => {
+  it('lets the player spend the roll power on a tile', async () => {
     renderApp([
       'CATQZ',
       'RLMNV',
@@ -363,17 +371,16 @@ describe('LexplosionApp', () => {
       'YJBCD',
     ])
     await act(async () => {})
+    const { board, centerOf } = installBoardGeometry()
 
-    fireEvent.click(screen.getByRole('button', { name: /Shuffle board for -75/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Arm roll power' }))
+    fireEvent.pointerDown(board, {
+      pointerId: 1,
+      ...centerOf(0, 0),
+    })
+    fireEvent.pointerUp(window)
 
-    expect(screen.getByText('Shuffle Board?')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-    expect(screen.queryByText('Shuffle Board?')).toBeNull()
-    expect(
-      latestBoardModel().labels.some((label: { text: string }) => label.text === 'Board shuffled for -75.'),
-    ).toBe(false)
+    expect(screen.getByRole('button', { name: 'Arm roll power' })).toBeDisabled()
   })
 
   it('shows special tile rules in help and syncs special tile kinds to the board scene', async () => {

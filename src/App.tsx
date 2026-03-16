@@ -32,7 +32,6 @@ import {
   INVALID_FLASH_MS,
   MATCH_FEEDBACK_STEP_MULTIPLIER,
   SCORE_PULSE_DURATION_MS,
-  SHUFFLE_PENALTY,
   SPAWN_BASE_DURATION_MS,
   SPAWN_COLUMN_SWEEP_MS,
   SPAWN_DELAY_PER_ROW_MS,
@@ -40,7 +39,7 @@ import {
   STEP_DURATIONS,
   TILE_CLEAR_ANIMATION_MS,
 } from './game/constants'
-import { breakTile, createGame, evaluateBoardState, shuffleGame, submitSelection } from './game/engine'
+import { breakTile, createGame, evaluateBoardState, rerollTile, submitSelection, swapTiles } from './game/engine'
 import { getTileDefinition, STARTER_TILE_KINDS } from './game/tileRegistry'
 import type {
   BoardEvaluation,
@@ -58,8 +57,9 @@ interface LexplosionAppProps {
   stepDurations?: Partial<Record<TurnPhase, number>>
 }
 
-type ConfirmAction = 'shuffle' | 'reset'
-type RescueMode = 'break' | null
+type ConfirmAction = 'reset'
+type PowerMode = 'break' | 'swap' | 'reroll' | null
+type Lifelines = Record<Exclude<PowerMode, null>, number>
 
 const TILE_SNAP_RATIO = 0.45
 const FALL_STAGGER_MS = 72
@@ -68,6 +68,7 @@ const REFILL_STAGGER_MS = 88
 const REFILL_COLUMN_STAGGER_MS = 64
 const SCORE_TWEEN_MS = 720
 const TITLE_MODE_HOLD_MS = 800
+const INITIAL_LIFELINES: Lifelines = { break: 1, swap: 1, reroll: 1 }
 
 function easeOutCubic(progress: number) {
   return 1 - (1 - progress) ** 3
@@ -79,21 +80,6 @@ function HelpIcon() {
       <path
         d="M12 17.2a1.15 1.15 0 1 1 0 2.3 1.15 1.15 0 0 1 0-2.3Zm.02-12.7c-3.08 0-5.12 1.64-5.28 4.36h2.26c.12-1.35 1.15-2.18 2.82-2.18 1.56 0 2.59.75 2.59 1.96 0 .92-.46 1.46-1.9 2.26-1.82 1.01-2.44 1.98-2.39 3.96v.33h2.2v-.25c0-1.26.33-1.79 1.69-2.57 1.62-.92 2.62-1.86 2.62-3.77 0-2.47-1.96-4.1-4.61-4.1Z"
         fill="currentColor"
-      />
-    </svg>
-  )
-}
-
-function ShuffleIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path
-        d="M16.8 4h2.7v2.7M7 7h2.5c1.1 0 2.1.53 2.73 1.42l3.54 5.16A3.34 3.34 0 0 0 18.57 15H20m-.5 5v-2.7h-2.7M4 7h1.55c1.08 0 2.1.52 2.73 1.4L9.8 10.6m4.4 2.8 1.52 2.2A3.34 3.34 0 0 0 18.45 17H20M4 17h1.55c1.08 0 2.1-.52 2.73-1.4L9.8 13.4"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
       />
     </svg>
   )
@@ -115,6 +101,36 @@ function BreakIcon() {
     <svg aria-hidden="true" viewBox="0 0 24 24">
       <path
         d="M14.4 3.8 20.2 9.6l-1.8 1.8-1.3-1.3-3.2 3.2 1.1 1.1-1.8 1.8-1.1-1.1-5.5 5.5a1.7 1.7 0 0 1-2.4-2.4l5.5-5.5-1.1-1.1 1.8-1.8 1.1 1.1 3.2-3.2-1.3-1.3 1.8-1.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+function SwapIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M7 7h10m0 0-2.8-2.8M17 7l-2.8 2.8M17 17H7m0 0 2.8-2.8M7 17l2.8 2.8"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  )
+}
+
+function RerollIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M18.2 7.1A7 7 0 0 0 6.1 8.4M5.8 16.9A7 7 0 0 0 17.9 15.6M18.6 4.5v3.6H15M9 19.5H5.4v-3.6"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
@@ -256,7 +272,9 @@ export function LexplosionApp({
   const [statusMessage, setStatusMessage] = useState(initialState.statusMessage)
   const [helpOpen, setHelpOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
-  const [rescueMode, setRescueMode] = useState<RescueMode>(null)
+  const [powerMode, setPowerMode] = useState<PowerMode>(null)
+  const [lifelines, setLifelines] = useState<Lifelines>(INITIAL_LIFELINES)
+  const [swapAnchor, setSwapAnchor] = useState<Position | null>(null)
   const dragPathRef = useRef<Position[]>([])
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const titleHoldTimeoutRef = useRef<number | null>(null)
@@ -301,6 +319,16 @@ export function LexplosionApp({
     () => evaluateBoardState(displayBoard),
     [displayBoard],
   )
+
+  useEffect(() => {
+    console.info('[letterquake] board evaluation', {
+      mode: game.mode,
+      playableWords: boardEvaluation.playableWords,
+      straightClears: boardEvaluation.straightWords,
+      danger: boardEvaluation.danger,
+      remainingTiles,
+    })
+  }, [boardEvaluation, game.mode, remainingTiles])
   const previousStep = useMemo(
     () =>
       pendingTurn && stepIndex > 0 && stepIndex - 1 < pendingTurn.steps.length
@@ -712,7 +740,11 @@ export function LexplosionApp({
   const floatingLabels = useMemo<BoardRenderLabel[]>(() => {
     const labels: BoardRenderLabel[] = []
     const systemMessage =
-      statusMessage.startsWith('Board shuffled for -') ? statusMessage : null
+      statusMessage === 'Fault opened.' ||
+      statusMessage === 'Tiles swapped.' ||
+      statusMessage === 'Tile rerolled.'
+        ? statusMessage
+        : null
 
     const centerX = (displayBoard[0]?.length ?? 1) / 2 - 0.5
     const centerY = displayBoard.length * 0.56 - 0.5
@@ -860,7 +892,13 @@ export function LexplosionApp({
       invalidResetTimeoutRef.current = null
     }
     setInvalidPath([])
-    setRescueMode(null)
+    setPowerMode(null)
+    setSwapAnchor(null)
+    setLifelines(INITIAL_LIFELINES)
+    setDisplayedScore(nextGame.score)
+    displayedScoreRef.current = nextGame.score
+    setDisplayedScoreDelta(nextGame.lastScoreDelta)
+    displayedScoreDeltaRef.current = nextGame.lastScoreDelta
     setGame({ ...nextGame, board: createEmptyBoard(nextGame.board.length) })
     setPendingTurn(buildIntroTurn(nextGame))
     setStepIndex(0)
@@ -890,41 +928,20 @@ export function LexplosionApp({
     clearTitleHold()
   }
 
-  function toggleBreakMode() {
-    if (inputLocked || game.mode !== 'clear-board' || game.shuffleCharges <= 0 || game.gameOver) {
+  function armPower(mode: Exclude<PowerMode, null>) {
+    if (inputLocked || game.gameOver || lifelines[mode] <= 0) {
       return
     }
-    setRescueMode((current) => (current === 'break' ? null : 'break'))
-  }
-
-  function handleShuffle() {
-    if (inputLocked) {
-      return
-    }
-
-    const nextGame = shuffleGame(game)
-    if (nextGame === game) {
-      return
-    }
-    dragPathRef.current = []
-    setInvalidPath([])
-    setPendingTurn(null)
-    setStepIndex(-1)
-    setRescueMode(null)
-    setGame(nextGame)
+    setSelectedPath([])
+    setPowerMode((current) => (current === mode ? null : mode))
+    setSwapAnchor(null)
     setStatusMessage(
-      game.mode === 'clear-board'
-        ? `Rescue shuffle used. ${nextGame.shuffleCharges} left.`
-        : `Board shuffled for -${SHUFFLE_PENALTY}.`,
+      mode === 'break'
+        ? 'Break armed.'
+        : mode === 'swap'
+          ? 'Swap armed.'
+          : 'Roll armed.',
     )
-  }
-
-  function requestShuffle() {
-    if (inputLocked || (game.mode === 'clear-board' && game.shuffleCharges <= 0)) {
-      return
-    }
-
-    setConfirmAction('shuffle')
   }
 
   function requestReset() {
@@ -936,10 +953,6 @@ export function LexplosionApp({
   }
 
   function confirmPendingAction() {
-    if (confirmAction === 'shuffle') {
-      handleShuffle()
-    }
-
     if (confirmAction === 'reset') {
       resetGame()
     }
@@ -969,21 +982,59 @@ export function LexplosionApp({
       return
     }
 
-    if (rescueMode === 'break' && game.mode === 'clear-board') {
+    if (powerMode === 'break' && lifelines.break > 0) {
       const turn = breakTile(game, position)
       if (turn.valid) {
+        dragPathRef.current = []
+        setLifelines((current) => ({ ...current, break: Math.max(0, current.break - 1) }))
         setGame((current) => ({
           ...current,
           selectedPath: [],
           turnStatus: 'resolving',
           animationQueue: turn.steps,
         }))
-        dragPathRef.current = []
         setPendingTurn(turn)
         setStepIndex(0)
-        setStatusMessage(`Fault opened. ${turn.nextState.shuffleCharges} rescues left.`)
+        setStatusMessage('Fault opened.')
       }
-      setRescueMode(null)
+      setPowerMode(null)
+      setSwapAnchor(null)
+      return
+    }
+
+    if (powerMode === 'swap' && lifelines.swap > 0) {
+      const tile = game.board[position.row]?.[position.col]
+      if (!tile) {
+        return
+      }
+
+      if (!swapAnchor) {
+        setSwapAnchor(position)
+        setStatusMessage('Pick the second tile to swap.')
+      } else {
+        const nextGame = swapTiles(game, swapAnchor, position)
+        if (nextGame !== game) {
+          dragPathRef.current = []
+          setGame(nextGame)
+          setLifelines((current) => ({ ...current, swap: Math.max(0, current.swap - 1) }))
+          setStatusMessage('Tiles swapped.')
+        }
+        setPowerMode(null)
+        setSwapAnchor(null)
+      }
+      return
+    }
+
+    if (powerMode === 'reroll' && lifelines.reroll > 0) {
+      const nextGame = rerollTile(game, position)
+      if (nextGame !== game) {
+        dragPathRef.current = []
+        setGame(nextGame)
+        setLifelines((current) => ({ ...current, reroll: Math.max(0, current.reroll - 1) }))
+        setStatusMessage('Tile rerolled.')
+      }
+      setPowerMode(null)
+      setSwapAnchor(null)
       return
     }
 
@@ -1089,32 +1140,6 @@ export function LexplosionApp({
           </button>
           <div className="app__actions">
             <button
-              aria-label={
-                rescueMode === 'break'
-                  ? 'Cancel break rescue'
-                  : `Use break rescue (${game.shuffleCharges} left)`
-              }
-              className={`app__icon-button${rescueMode === 'break' ? ' app__icon-button--active' : ''}`}
-              disabled={game.mode !== 'clear-board' || game.shuffleCharges <= 0}
-              onClick={toggleBreakMode}
-              type="button"
-            >
-              <BreakIcon />
-            </button>
-            <button
-              aria-label={
-                game.mode === 'clear-board'
-                  ? `Use rescue shuffle (${game.shuffleCharges} left)`
-                  : `Shuffle board for -${SHUFFLE_PENALTY}`
-              }
-              className="app__icon-button"
-              disabled={game.mode === 'clear-board' && game.shuffleCharges <= 0}
-              onClick={requestShuffle}
-              type="button"
-            >
-              <ShuffleIcon />
-            </button>
-            <button
               aria-label="Open help"
               className="app__icon-button"
               onClick={() => setHelpOpen(true)}
@@ -1175,34 +1200,51 @@ export function LexplosionApp({
           </div>
           <div className="status-strip__divider" />
           <div className="status-strip__group status-strip__group--compact">
-            <span className="status-strip__label">
-              {game.mode === 'clear-board' ? 'Rescues' : 'Grade'}
-            </span>
+            <span className="status-strip__label">Powers</span>
             <strong className="status-strip__value">
-              {game.mode === 'clear-board' ? game.shuffleCharges : 'Arcade'}
+              {lifelines.break + lifelines.swap + lifelines.reroll}
             </strong>
           </div>
         </section>
 
-        {game.mode === 'clear-board' && !game.gameOver ? (
-          <section
-            aria-label="run state"
-            className={`run-state run-state--${boardEvaluation.danger}${rescueMode === 'break' ? ' run-state--targeting' : ''}`}
-          >
-            <strong className="run-state__title">
-              {rescueMode === 'break'
-                ? 'Break armed: tap a tile to shatter it.'
-                : boardEvaluation.danger === 'critical'
-                  ? 'Critical board'
-                  : boardEvaluation.danger === 'tense'
-                    ? 'Tense board'
-                    : 'Board stable'}
-            </strong>
-            <span className="run-state__meta">
-              {boardEvaluation.playableWords} playable words
-              {boardEvaluation.straightWords > 0 ? ` • ${boardEvaluation.straightWords} straight clears` : ''}
-              {boardEvaluation.danger !== 'safe' ? ` • ${remainingTiles} tiles left` : ''}
-            </span>
+        {!game.gameOver ? (
+          <section aria-label="powers" className="powers">
+            <button
+              aria-label={powerMode === 'break' ? 'Cancel break power' : 'Arm break power'}
+              className={`power-card${powerMode === 'break' ? ' power-card--active' : ''}${lifelines.break === 0 ? ' power-card--spent' : ''}`}
+              disabled={lifelines.break === 0 || inputLocked}
+              onClick={() => armPower('break')}
+              type="button"
+            >
+              <span className="power-card__topline">
+                <span className="power-card__icon"><BreakIcon /></span>
+                <span className="power-card__title">Break</span>
+              </span>
+            </button>
+            <button
+              aria-label={powerMode === 'swap' ? 'Cancel swap power' : 'Arm swap power'}
+              className={`power-card${powerMode === 'swap' ? ' power-card--active' : ''}${lifelines.swap === 0 ? ' power-card--spent' : ''}`}
+              disabled={lifelines.swap === 0 || inputLocked}
+              onClick={() => armPower('swap')}
+              type="button"
+            >
+              <span className="power-card__topline">
+                <span className="power-card__icon"><SwapIcon /></span>
+                <span className="power-card__title">Swap</span>
+              </span>
+            </button>
+            <button
+              aria-label={powerMode === 'reroll' ? 'Cancel roll power' : 'Arm roll power'}
+              className={`power-card${powerMode === 'reroll' ? ' power-card--active' : ''}${lifelines.reroll === 0 ? ' power-card--spent' : ''}`}
+              disabled={lifelines.reroll === 0 || inputLocked}
+              onClick={() => armPower('reroll')}
+              type="button"
+            >
+              <span className="power-card__topline">
+                <span className="power-card__icon"><RerollIcon /></span>
+                <span className="power-card__title">Roll</span>
+              </span>
+            </button>
           </section>
         ) : null}
 
@@ -1234,6 +1276,7 @@ export function LexplosionApp({
                     : 'Endless mode keeps refilling from the top so the run ends only when no valid words remain.'}
                 </li>
                 <li>Gravity can trigger bonus cascade clears automatically.</li>
+                <li>Each run gives you one Break, one Swap, and one Roll lifeline.</li>
                 {STARTER_TILE_KINDS.map((kind) => {
                   const definition = getTileDefinition(kind)
                   return (
@@ -1242,14 +1285,9 @@ export function LexplosionApp({
                     </li>
                   )
                 })}
-                <li>
-                  {game.mode === 'clear-board'
-                    ? `You get ${game.shuffleCharges} rescue shuffle${game.shuffleCharges === 1 ? '' : 's'} left this run.`
-                    : `Shuffle rescues a bad board for ${SHUFFLE_PENALTY} points.`}
-                </li>
-                {game.mode === 'clear-board' ? (
-                  <li>Break rescue shatters one tile and lets gravity plus cascades resolve from the impact.</li>
-                ) : null}
+                <li>Break opens a fault under one tile and lets the board resolve from the impact.</li>
+                <li>Swap trades any two tiles anywhere on the board.</li>
+                <li>Roll randomizes one tile into a new letter.</li>
               </ul>
             </section>
           </div>
@@ -1263,14 +1301,12 @@ export function LexplosionApp({
             onClick={closeConfirmDialog}
           >
             <section
-              aria-label={
-                confirmAction === 'shuffle' ? 'Confirm shuffle' : 'Confirm restart'
-              }
+              aria-label="Confirm restart"
               className="help-card confirm-card"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="help-card__header">
-                <h2>{confirmAction === 'shuffle' ? 'Shuffle Board?' : 'Restart Run?'}</h2>
+                <h2>Restart Run?</h2>
                 <button
                   aria-label="Close confirmation"
                   className="help-card__close"
@@ -1281,11 +1317,7 @@ export function LexplosionApp({
                 </button>
               </div>
               <p className="confirm-card__body">
-                {confirmAction === 'shuffle'
-                  ? game.mode === 'clear-board'
-                    ? `This will use 1 rescue shuffle and leave you with ${Math.max(0, game.shuffleCharges - 1)}.`
-                    : `This will reshuffle the board and cost ${SHUFFLE_PENALTY} points.`
-                  : 'This will discard the current board and start a fresh run.'}
+                This will discard the current board and start a fresh run.
               </p>
               <div className="confirm-card__actions">
                 <button
@@ -1300,7 +1332,7 @@ export function LexplosionApp({
                   onClick={confirmPendingAction}
                   type="button"
                 >
-                  {confirmAction === 'shuffle' ? 'Shuffle' : 'Restart'}
+                  Restart
                 </button>
               </div>
             </section>
@@ -1353,8 +1385,8 @@ export function LexplosionApp({
                   </dd>
                 </div>
                 <div className="game-over-card__stat">
-                  <dt>{game.mode === 'clear-board' ? 'Rescues Left' : 'Final State'}</dt>
-                  <dd>{game.mode === 'clear-board' ? game.shuffleCharges : 'Dead Board'}</dd>
+                  <dt>Powers Left</dt>
+                  <dd>{lifelines.break + lifelines.swap + lifelines.reroll}</dd>
                 </div>
               </dl>
               {game.won && game.mode === 'clear-board' ? (
@@ -1366,11 +1398,6 @@ export function LexplosionApp({
                 </div>
               ) : null}
               <div className="confirm-card__actions">
-                {!game.won && game.mode === 'clear-board' && game.shuffleCharges > 0 ? (
-                  <button className="confirm-card__button" onClick={handleShuffle} type="button">
-                    Use Rescue
-                  </button>
-                ) : null}
                 <button
                   className="confirm-card__button confirm-card__button--ghost"
                   onClick={switchMode}

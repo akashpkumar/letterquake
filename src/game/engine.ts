@@ -1575,8 +1575,6 @@ export function shuffleGame(state: GameState): GameState {
 
 export function breakTile(state: GameState, position: Position): TurnResult {
   if (
-    state.mode !== 'clear-board' ||
-    state.shuffleCharges <= 0 ||
     state.gameOver ||
     !state.board[position.row]?.[position.col]
   ) {
@@ -1603,7 +1601,7 @@ export function breakTile(state: GameState, position: Position): TurnResult {
     mode: state.mode,
     board: resolution.board,
     refillQueue: resolution.refillQueue,
-    shuffleCharges: state.shuffleCharges - 1,
+    shuffleCharges: state.shuffleCharges,
     score: state.score + totalScoreDelta,
     turn: state.turn + 1,
     totalWordsCleared: state.totalWordsCleared + resolution.totalWordsCleared,
@@ -1623,6 +1621,84 @@ export function breakTile(state: GameState, position: Position): TurnResult {
     valid: true,
     nextState,
     steps: resolution.steps,
+  }
+}
+
+export function rerollTile(state: GameState, position: Position): GameState {
+  if (state.gameOver || !state.board[position.row]?.[position.col]) {
+    return state
+  }
+
+  const nextBoard = cloneBoard(state.board)
+  const tile = nextBoard[position.row][position.col]
+  if (!tile) {
+    return state
+  }
+
+  let nextSeed = state.rngSeed
+  let letter = tile.letter
+  for (let attempt = 0; attempt < 4 && letter === tile.letter; attempt += 1) {
+    ;[letter, nextSeed] = pickWeightedLetter(nextSeed)
+  }
+
+  nextBoard[position.row][position.col] = {
+    ...tile,
+    letter,
+  }
+
+  const won = isBoardEmpty(nextBoard)
+  const gameOver = won || !hasPlayableWord(nextBoard)
+
+  return {
+    ...state,
+    board: nextBoard,
+    turn: state.turn + 1,
+    combo: 0,
+    turnStatus: gameOver ? 'game-over' : 'ready',
+    selectedPath: [],
+    animationQueue: [],
+    lastWords: [],
+    lastScoreDelta: 0,
+    gameOver,
+    won,
+    rngSeed: nextSeed,
+  }
+}
+
+export function swapTiles(state: GameState, first: Position, second: Position): GameState {
+  if (state.gameOver) {
+    return state
+  }
+
+  const firstTile = state.board[first.row]?.[first.col]
+  const secondTile = state.board[second.row]?.[second.col]
+  if (!firstTile || !secondTile) {
+    return state
+  }
+
+  if (first.row === second.row && first.col === second.col) {
+    return state
+  }
+
+  const nextBoard = cloneBoard(state.board)
+  nextBoard[first.row][first.col] = secondTile
+  nextBoard[second.row][second.col] = firstTile
+
+  const won = isBoardEmpty(nextBoard)
+  const gameOver = won || !hasPlayableWord(nextBoard)
+
+  return {
+    ...state,
+    board: nextBoard,
+    turn: state.turn + 1,
+    combo: 0,
+    turnStatus: gameOver ? 'game-over' : 'ready',
+    selectedPath: [],
+    animationQueue: [],
+    lastWords: [],
+    lastScoreDelta: 0,
+    gameOver,
+    won,
   }
 }
 

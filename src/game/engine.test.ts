@@ -296,7 +296,7 @@ describe('engine', () => {
       { row: 2, col: 0 },
     )
     expect(broken.valid).toBe(true)
-    expect(broken.nextState.shuffleCharges).toBe(0)
+    expect(broken.nextState.shuffleCharges).toBe(1)
     expect(broken.steps[0]?.matchedPositions).toEqual([{ row: 2, col: 0 }])
     expect(broken.nextState.totalWordsCleared).toBeGreaterThanOrEqual(1)
     expect(broken.nextState.board[4][0]).toBeNull()
