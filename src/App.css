@@ -1112,18 +1112,9 @@
   font-size: 0.95rem;
 }
 
-@media (max-width: 460px) {
+@media (max-width: 380px) {
   .shell {
     padding: 0.75rem;
-  }
-
-  .app__header {
-    display: grid;
-    justify-content: stretch;
-  }
-
-  .app__actions {
-    flex-wrap: wrap;
   }
 
   .status-strip {
@@ -1154,6 +1145,66 @@
 
   .power-card__title {
     font-size: 0.64rem;
+  }
+}
+
+@media (max-width: 340px) {
+  .shell {
+    padding: 0.4rem;
+  }
+
+  .app {
+    width: 100%;
+  }
+
+  .status-strip {
+    gap: 0.32rem 0.5rem;
+    padding: 0.48rem 0.52rem;
+  }
+
+  .board-panel {
+    padding: 0.38rem;
+  }
+
+  .board {
+    margin: 0.42rem 0 0.22rem;
+  }
+
+  .powers {
+    gap: 0.24rem;
+  }
+
+  .power-card {
+    padding: 0.4rem 0.18rem;
+  }
+
+  .power-card__topline {
+    gap: 0.22rem;
+  }
+
+  .power-card__icon {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  .power-card__icon svg {
+    width: 0.82rem;
+    height: 0.82rem;
+  }
+
+  .power-card__title {
+    font-size: 0.6rem;
+  }
+}
+
+@media (max-width: 300px) {
+  .app__header {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .app__actions {
+    flex-wrap: wrap;
   }
 }
 
