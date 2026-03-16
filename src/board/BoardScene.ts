@@ -356,11 +356,11 @@ function drawStandardTile(
   drawRoundedRect(graphics, 0, 0, width, height, radius)
   graphics.stroke()
   if (tile.kind === 'anchor') {
-    graphics.stroke({ color: 0x24313a, width: 4, alpha: 0.8 })
-    drawRoundedRect(graphics, 1.5, 1.5, width - 3, height - 3, Math.max(6, radius - 2))
+    graphics.stroke({ color: 0x24313a, width: 12, alpha: 0.92 })
+    drawRoundedRect(graphics, 5, 5, width - 10, height - 10, Math.max(5, radius - 6))
     graphics.stroke()
-    graphics.fill({ color: 0x0b0f12, alpha: 0.18 })
-    drawRoundedRect(graphics, 5, 5, width - 10, height - 10, Math.max(4, radius - 6))
+    graphics.fill({ color: 0x0b0f12, alpha: 0.22 })
+    drawRoundedRect(graphics, 11, 11, width - 22, height - 22, Math.max(3, radius - 12))
     graphics.fill()
   }
   graphics.tint = 0xffffff
@@ -391,12 +391,23 @@ function drawCrackBranch(
   width: number,
 ) {
   graphics.stroke({ color, width, alpha, cap: 'round', join: 'round' })
-  graphics.moveTo(startX, startY)
+  let currentX = startX
+  let currentY = startY
+  graphics.moveTo(currentX, currentY)
   segments.forEach(([cp1x, cp1y, endX, endY], index) => {
-    if (index === 0) {
-      graphics.moveTo(startX, startY)
-    }
-    graphics.bezierCurveTo(cp1x, cp1y, cp1x, cp1y, endX, endY)
+    const dx = endX - currentX
+    const dy = endY - currentY
+    const length = Math.hypot(dx, dy) || 1
+    const normalX = -dy / length
+    const normalY = dx / length
+    const bend = length * (index % 2 === 0 ? 0.18 : -0.14)
+    const control1X = cp1x + normalX * bend
+    const control1Y = cp1y + normalY * bend
+    const control2X = cp1x - normalX * bend * 0.72
+    const control2Y = cp1y - normalY * bend * 0.72
+    graphics.bezierCurveTo(control1X, control1Y, control2X, control2Y, endX, endY)
+    currentX = endX
+    currentY = endY
   })
   graphics.stroke()
 }
@@ -562,28 +573,8 @@ function drawCrackedIdentity(graphics: Graphics, metrics: BoardMetrics, durabili
   }
 }
 
-function drawAnchorIdentity(graphics: Graphics, metrics: BoardMetrics) {
-  const inset = Math.max(6, metrics.cellWidth * 0.08)
-  graphics.stroke({ color: 0xbadcf0, width: 1.4, alpha: 0.18 })
-  drawRoundedRect(
-    graphics,
-    inset,
-    inset,
-    metrics.cellWidth - inset * 2,
-    metrics.cellHeight - inset * 2,
-    Math.max(4, metrics.radius - 6),
-  )
-  graphics.stroke()
-  graphics.stroke({ color: 0x6a8394, width: 1, alpha: 0.42 })
-  drawRoundedRect(
-    graphics,
-    inset + 4,
-    inset + 4,
-    metrics.cellWidth - (inset + 4) * 2,
-    metrics.cellHeight - (inset + 4) * 2,
-    Math.max(3, metrics.radius - 10),
-  )
-  graphics.stroke()
+function drawAnchorIdentity(graphics: Graphics) {
+  graphics.clear()
 }
 
 function drawTileIdentity(graphics: Graphics, tile: BoardRenderTile, metrics: BoardMetrics) {
@@ -599,7 +590,7 @@ function drawTileIdentity(graphics: Graphics, tile: BoardRenderTile, metrics: Bo
   }
 
   if (tile.kind === 'anchor') {
-    drawAnchorIdentity(graphics, metrics)
+    drawAnchorIdentity(graphics)
   }
 }
 
