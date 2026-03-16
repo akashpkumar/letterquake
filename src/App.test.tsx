@@ -252,7 +252,7 @@ describe('LexplosionApp', () => {
     })
     fireEvent.pointerUp(window)
 
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 6; index += 1) {
       act(() => {
         vi.runOnlyPendingTimers()
       })
@@ -266,7 +266,8 @@ describe('LexplosionApp', () => {
     vi.useRealTimers()
   })
 
-  it('defaults to clear-board mode and can switch to endless mode', async () => {
+  it('defaults to clear-board mode and can switch to endless mode by holding the title', async () => {
+    vi.useFakeTimers()
     render(
       <LexplosionApp
         stepDurations={{ clear: 1, 'pause-clear': 1, gravity: 1, 'pause-refill': 1, refill: 1 }}
@@ -275,17 +276,17 @@ describe('LexplosionApp', () => {
 
     await act(async () => {})
 
-    expect(screen.getByRole('button', { name: 'Switch to endless mode' })).toHaveTextContent(
-      'Clear Board',
-    )
     expect(screen.getByText('Reserve')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to endless mode' }))
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'letterquake' }))
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+    fireEvent.pointerUp(screen.getByRole('button', { name: 'letterquake' }))
+    await act(async () => {})
 
-    expect(screen.getByRole('button', { name: 'Switch to clear board mode' })).toHaveTextContent(
-      'Endless',
-    )
     expect(screen.getByText('Mode')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 
   it('arms break rescue mode in clear-board runs', async () => {

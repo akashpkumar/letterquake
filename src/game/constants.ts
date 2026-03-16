@@ -11,14 +11,14 @@ export const REFILL_EASY_WORDS = 1
 export const INVALID_FLASH_MS = 360
 export const CONNECTOR_OFFSET = 0.32
 export const MATCH_FEEDBACK_STEP_MULTIPLIER = 3
-export const TILE_CLEAR_ANIMATION_MS = 1200
-export const CLEAR_PRE_HOLD_MS = 150
+export const TILE_CLEAR_ANIMATION_MS = 1800
+export const CLEAR_PRE_HOLD_MS = 225
 export const CLEAR_WAVE_STAGGER_MS = 90
-export const CLEAR_WAVE_HOLD_MS = 180
-export const FLOAT_WORD_DURATION_MS = 1800
-export const FLOAT_SCORE_DURATION_MS = 2100
-export const FLOAT_SCORE_DELAY_MS = 320
-export const SCORE_PULSE_DURATION_MS = 900
+export const CLEAR_WAVE_HOLD_MS = 270
+export const FLOAT_WORD_DURATION_MS = 2700
+export const FLOAT_SCORE_DURATION_MS = 3150
+export const FLOAT_SCORE_DELAY_MS = 480
+export const SCORE_PULSE_DURATION_MS = 1350
 export const FALL_BASE_DURATION_MS = 220
 export const FALL_DURATION_PER_ROW_MS = 36
 export const FALL_DELAY_PER_ROW_MS = 0
@@ -115,8 +115,8 @@ export const CLUSTER_FOLLOWS: Record<string, string[]> = {
 }
 
 export const STEP_DURATIONS: Record<TurnPhase, number> = {
-  highlight: 500,
-  clear: 420,
+  highlight: 750,
+  clear: 630,
   'pause-clear': 180,
   gravity: 440,
   'pause-refill': 160,

@@ -67,6 +67,7 @@ const FALL_COLUMN_STAGGER_MS = 56
 const REFILL_STAGGER_MS = 88
 const REFILL_COLUMN_STAGGER_MS = 64
 const SCORE_TWEEN_MS = 720
+const TITLE_MODE_HOLD_MS = 800
 
 function easeOutCubic(progress: number) {
   return 1 - (1 - progress) ** 3
@@ -258,6 +259,7 @@ export function LexplosionApp({
   const [rescueMode, setRescueMode] = useState<RescueMode>(null)
   const dragPathRef = useRef<Position[]>([])
   const invalidResetTimeoutRef = useRef<number | null>(null)
+  const titleHoldTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
   const [displayedScore, setDisplayedScore] = useState(initialState.game.score)
   const displayedScoreRef = useRef(initialState.game.score)
@@ -308,14 +310,11 @@ export function LexplosionApp({
   )
 
   const displayedClearWordDetails = useMemo<FoundWord[]>(() => {
-    if (activeStep?.phase === 'highlight' || activeStep?.phase === 'clear') {
+    if (activeStep?.phase === 'clear') {
       return activeStep.words
     }
 
-    if (
-      activeStep?.phase === 'pause-clear' &&
-      (previousStep?.phase === 'clear' || previousStep?.phase === 'highlight')
-    ) {
+    if (activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear') {
       return previousStep.words
     }
 
@@ -337,7 +336,7 @@ export function LexplosionApp({
   }, [clearDelayMap])
 
   const visibleClearStep =
-    activeStep?.phase === 'highlight' || activeStep?.phase === 'clear'
+    activeStep?.phase === 'clear'
       ? activeStep
       : activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear'
         ? previousStep
@@ -647,6 +646,9 @@ export function LexplosionApp({
       if (scoreDeltaAnimationFrameRef.current !== null) {
         cancelAnimationFrame(scoreDeltaAnimationFrameRef.current)
       }
+      if (titleHoldTimeoutRef.current !== null) {
+        window.clearTimeout(titleHoldTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -698,7 +700,7 @@ export function LexplosionApp({
     }
 
     const clearGroups =
-      activeStep?.phase === 'highlight' || activeStep?.phase === 'clear'
+      activeStep?.phase === 'clear'
         ? displayedClearWordDetails
             .filter((word) => word.positions.length > 1)
             .map((word) => word.positions)
@@ -715,7 +717,7 @@ export function LexplosionApp({
     const centerX = (displayBoard[0]?.length ?? 1) / 2 - 0.5
     const centerY = displayBoard.length * 0.56 - 0.5
     if (displayedClearWordDetails.length > 0 && visibleClearStep) {
-      const queueStepMs = 320
+      const queueStepMs = 480
       const wordText =
         displayedClearWordDetails.length === 1
           ? displayedClearWordDetails[0].word
@@ -867,6 +869,25 @@ export function LexplosionApp({
 
   function switchMode() {
     resetGameToMode(game.mode === 'clear-board' ? 'endless' : 'clear-board')
+  }
+
+  function clearTitleHold() {
+    if (titleHoldTimeoutRef.current !== null) {
+      window.clearTimeout(titleHoldTimeoutRef.current)
+      titleHoldTimeoutRef.current = null
+    }
+  }
+
+  function startTitleHold() {
+    clearTitleHold()
+    titleHoldTimeoutRef.current = window.setTimeout(() => {
+      switchMode()
+      clearTitleHold()
+    }, TITLE_MODE_HOLD_MS)
+  }
+
+  function stopTitleHold() {
+    clearTitleHold()
   }
 
   function toggleBreakMode() {
@@ -1055,20 +1076,18 @@ export function LexplosionApp({
     >
       <section className="app">
         <header className="app__header">
-          <h1>letterquake</h1>
+          <button
+            aria-label="letterquake"
+            className="app__title-button"
+            onPointerCancel={stopTitleHold}
+            onPointerDown={startTitleHold}
+            onPointerLeave={stopTitleHold}
+            onPointerUp={stopTitleHold}
+            type="button"
+          >
+            <h1>letterquake</h1>
+          </button>
           <div className="app__actions">
-            <button
-              aria-label={
-                game.mode === 'clear-board'
-                  ? 'Switch to endless mode'
-                  : 'Switch to clear board mode'
-              }
-              className="app__mode-button"
-              onClick={switchMode}
-              type="button"
-            >
-              {game.mode === 'clear-board' ? 'Clear Board' : 'Endless'}
-            </button>
             <button
               aria-label={
                 rescueMode === 'break'

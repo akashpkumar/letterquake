@@ -756,11 +756,11 @@ export async function createBoardScene(
       particleNodes.set(id, node)
       particleLayer.addChild(graphic)
 
-      runAnimation({
-        id,
-        elapsedMs: 0,
-        delayMs: tile.clearDelayMs ?? 0,
-        durationMs: (isEpicenter ? 700 : 520) + index * 24,
+        runAnimation({
+          id,
+          elapsedMs: 0,
+          delayMs: 0,
+          durationMs: (isEpicenter ? 1050 : 780) + index * 36,
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const fade = 1 - eased
@@ -838,11 +838,11 @@ export async function createBoardScene(
         const startX = centerX + metrics.cellWidth * fragment.offsetX
         const startY = centerY + metrics.cellHeight * fragment.offsetY
 
-        runAnimation({
-          id,
-          elapsedMs: 0,
-          delayMs: tile.clearDelayMs ?? 0,
-          durationMs: (isEpicenter ? 760 : 520) + index * (isEpicenter ? 35 : 24),
+      runAnimation({
+        id,
+        elapsedMs: 0,
+        delayMs: 0,
+        durationMs: (isEpicenter ? 1140 : 780) + index * (isEpicenter ? 52 : 36),
           update: (progress) => {
             const eased = easeOutQuart(progress)
             const fade = 1 - eased
@@ -909,8 +909,8 @@ export async function createBoardScene(
       runAnimation({
         id,
         elapsedMs: 0,
-        delayMs: tile.clearDelayMs ?? 0,
-        durationMs: (isGold ? 700 : 560) + comboStrength * 110 + (index % 4) * (isGold ? 90 : 70) + (isEpicenter ? 120 : 0),
+        delayMs: 0,
+        durationMs: (isGold ? 1050 : 840) + comboStrength * 165 + (index % 4) * (isGold ? 135 : 105) + (isEpicenter ? 180 : 0),
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const fade = 1 - eased
@@ -1254,19 +1254,21 @@ export async function createBoardScene(
           id: `highlight:${tile.id}:${highlightPulseToken}`,
           elapsedMs: 0,
           delayMs: tile.clearDelayMs ?? 0,
-          durationMs: 180,
+          durationMs: 270,
           update: (progress) => {
             const pulse = Math.sin(progress * Math.PI)
             const rest = getRestScale(tile.selected)
-            setTileScale(node, rest.x + pulse * 0.14, rest.y - pulse * 0.14)
-            node.container.y = targetCenterY - pulse * metrics.cellHeight * 0.14
-            node.identity.alpha = 0.9 + pulse * 0.22
-            node.glyph.scale.set(1 + pulse * 0.08, 1 + pulse * 0.08)
+            setTileScale(node, rest.x + pulse * 0.04, rest.y + pulse * 0.04)
+            node.container.y = targetCenterY
+            node.plate.alpha = 0.88 + pulse * 0.22
+            node.identity.alpha = 0.96 + pulse * 0.18
+            node.glyph.scale.set(1 + pulse * 0.03, 1 + pulse * 0.03)
           },
           complete: () => {
             const rest = getRestScale(tile.selected)
             setTileScale(node, rest.x, rest.y)
             node.container.y = targetCenterY
+            node.plate.alpha = 1
             node.identity.alpha = 1
             node.glyph.scale.set(1, 1)
           },
@@ -1409,9 +1411,9 @@ export async function createBoardScene(
       const color = segment.variant === 'active' ? ACTIVE_PATH : segment.variant === 'invalid' ? INVALID_PATH : EVENT_PATH
       const eventFade =
         segment.variant === 'event'
-          ? progress < 0.72
+          ? progress < 0.58
             ? 1
-            : 1 - easeOutQuart((progress - 0.72) / 0.28)
+            : 1 - easeOutQuart((progress - 0.58) / 0.42)
           : 1
       const alpha =
         segment.variant === 'event'
@@ -1513,7 +1515,7 @@ export async function createBoardScene(
         id: `label:${label.key}`,
         elapsedMs: 0,
         delayMs: label.delayMs,
-        durationMs: label.variant === 'system' ? 1260 : label.variant === 'combo' ? 1080 : label.variant.includes('score') ? 1320 : 1180,
+        durationMs: label.variant === 'system' ? 1890 : label.variant === 'combo' ? 1620 : label.variant.includes('score') ? 1980 : 1770,
         update: (progress) => {
           const launchProgress = Math.min(progress / 0.28, 1)
           const launchEased = easeOutQuart(launchProgress)
@@ -1576,7 +1578,7 @@ export async function createBoardScene(
       id: `impact:${Date.now()}`,
       elapsedMs: 0,
       delayMs: 0,
-      durationMs: localImpact ? 420 : 300 + comboStrength * 120,
+      durationMs: localImpact ? 630 : 450 + comboStrength * 180,
       update: (progress) => {
         const eased = easeOutQuart(progress)
         const quakeFade = 1 - easeInCubic(progress)
@@ -1687,7 +1689,7 @@ export async function createBoardScene(
         delayMs: segment.delayMs,
         durationMs:
           segment.variant === 'event'
-            ? TILE_CLEAR_ANIMATION_MS
+            ? Math.round(TILE_CLEAR_ANIMATION_MS * 0.82)
             : segment.variant === 'invalid'
               ? 120
               : 100,

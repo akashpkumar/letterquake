@@ -26,6 +26,16 @@
   margin-bottom: 0.72rem;
 }
 
+.app__title-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 .app__header h1 {
   margin: 0;
   font-family: var(--font-display);
@@ -39,7 +49,6 @@
   gap: 0.35rem;
 }
 
-.app__mode-button,
 .app__icon-button {
   border: 1px solid #3a3a3c;
   border-radius: 0.5rem;
@@ -50,19 +59,8 @@
   padding: 0;
 }
 
-.app__mode-button:disabled,
 .app__icon-button:disabled {
   opacity: 0.36;
-}
-
-.app__mode-button {
-  min-width: 6.4rem;
-  height: 2.3rem;
-  padding: 0 0.8rem;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .app__icon-button {
@@ -862,11 +860,6 @@
 
   .app__actions {
     flex-wrap: wrap;
-  }
-
-  .app__mode-button {
-    min-width: 5.6rem;
-    padding: 0 0.65rem;
   }
 
   .status-strip {
