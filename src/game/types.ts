@@ -31,6 +31,13 @@ export interface FoundWord {
   positions: Position[]
 }
 
+export interface BoardEvaluation {
+  playableWords: number
+  straightWords: number
+  remainingTiles: number
+  danger: 'safe' | 'tense' | 'critical'
+}
+
 export interface TurnStep {
   phase: TurnPhase
   board: Board

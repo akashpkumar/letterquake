@@ -227,6 +227,19 @@ function getParticlePalette(kind: BoardRenderTile['kind']) {
   }
 }
 
+function getTileFragmentPalette(kind: BoardRenderTile['kind']) {
+  switch (kind) {
+    case 'gold':
+      return { face: 0x6f5a1f, edge: 0xe8c46a }
+    case 'cracked':
+      return { face: 0x232629, edge: 0x939aa0 }
+    case 'anchor':
+      return { face: 0x1a242b, edge: 0x7f98aa }
+    default:
+      return { face: 0x1a1b1d, edge: 0x5b5c60 }
+  }
+}
+
 function drawRoundedRect(
   graphics: Graphics,
   x: number,
@@ -618,10 +631,87 @@ export async function createBoardScene(
 
   function emitClearParticles(tile: BoardRenderTile, centerX: number, centerY: number) {
     const palette = getParticlePalette(tile.kind)
+    const fragmentPalette = getTileFragmentPalette(tile.kind)
     const isGold = tile.kind === 'gold'
+    const isEpicenter =
+      currentModel.impactPosition?.row === tile.row &&
+      currentModel.impactPosition?.col === tile.col
     const comboStrength = getComboStrength(currentModel.clearCombo)
     const comboBonus = Math.round(comboStrength * (isGold ? 16 : 8))
-    const pieceCount = (isGold ? 28 : tile.kind === 'anchor' ? 12 : 14) + comboBonus
+    const epicenterBonus = isEpicenter ? 18 : 0
+    const pieceCount = (isGold ? 28 : tile.kind === 'anchor' ? 12 : 14) + comboBonus + epicenterBonus
+
+    if (isEpicenter) {
+      const fragments = [
+        { angle: -2.2, width: 0.26, height: 0.24, distance: 1.05, lift: 0.46, spin: -0.34, offsetX: -0.18, offsetY: -0.16 },
+        { angle: -1.15, width: 0.24, height: 0.22, distance: 1.14, lift: 0.54, spin: 0.28, offsetX: 0.16, offsetY: -0.2 },
+        { angle: 0.48, width: 0.28, height: 0.24, distance: 1.08, lift: 0.42, spin: 0.31, offsetX: 0.2, offsetY: 0.12 },
+        { angle: 2.08, width: 0.25, height: 0.23, distance: 1.02, lift: 0.5, spin: -0.27, offsetX: -0.16, offsetY: 0.18 },
+      ]
+      fragments.forEach((fragment, index) => {
+        const id = `fragment:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
+        destroyParticle(id)
+
+        const graphic = new Graphics()
+        const node = { id, graphic }
+        particleNodes.set(id, node)
+        particleLayer.addChild(graphic)
+
+        const angle = fragment.angle
+        const distance = metrics.cellWidth * fragment.distance
+        const lift = metrics.cellHeight * fragment.lift
+        const spin = fragment.spin
+        const width = metrics.cellWidth * fragment.width
+        const height = metrics.cellHeight * fragment.height
+        const startX = centerX + metrics.cellWidth * fragment.offsetX
+        const startY = centerY + metrics.cellHeight * fragment.offsetY
+
+        runAnimation({
+          id,
+          elapsedMs: 0,
+          delayMs: tile.clearDelayMs ?? 0,
+          durationMs: 760 + index * 35,
+          update: (progress) => {
+            const eased = easeOutQuart(progress)
+            const fade = 1 - eased
+            const travel = distance * eased
+            const rise = Math.sin(progress * Math.PI) * lift
+            graphic.clear()
+            graphic.position.set(
+              startX + Math.cos(angle) * travel,
+              startY + Math.sin(angle) * travel - rise,
+            )
+            graphic.rotation = spin * progress * Math.PI * 1.9
+            graphic.stroke({ color: fragmentPalette.edge, width: 2, alpha: fade, join: 'round' })
+            graphic.moveTo(-width * 0.58, -height * 0.42)
+            graphic.lineTo(width * 0.18, -height * 0.54)
+            graphic.lineTo(width * 0.54, -height * 0.12)
+            graphic.lineTo(width * 0.38, height * 0.46)
+            graphic.lineTo(-width * 0.2, height * 0.58)
+            graphic.lineTo(-width * 0.62, height * 0.12)
+            graphic.lineTo(-width * 0.58, -height * 0.42)
+            graphic.stroke()
+            graphic.fill({ color: fragmentPalette.face, alpha: fade * 0.96 })
+            graphic.moveTo(-width * 0.58, -height * 0.42)
+            graphic.lineTo(width * 0.18, -height * 0.54)
+            graphic.lineTo(width * 0.54, -height * 0.12)
+            graphic.lineTo(width * 0.38, height * 0.46)
+            graphic.lineTo(-width * 0.2, height * 0.58)
+            graphic.lineTo(-width * 0.62, height * 0.12)
+            graphic.closePath()
+            graphic.fill()
+            graphic.stroke({ color: 0xffffff, width: 1, alpha: fade * 0.18, join: 'round' })
+            graphic.moveTo(-width * 0.28, -height * 0.2)
+            graphic.lineTo(width * 0.24, height * 0.08)
+            graphic.lineTo(-width * 0.06, height * 0.32)
+            graphic.stroke()
+          },
+          complete: () => {
+            destroyParticle(id)
+          },
+        })
+      })
+    }
 
     for (let index = 0; index < pieceCount; index += 1) {
       const id = `particle:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
@@ -632,23 +722,23 @@ export async function createBoardScene(
       particleNodes.set(id, node)
       particleLayer.addChild(graphic)
 
-      const angleSpread = isGold ? Math.PI * 1.22 : Math.PI * 1.05
+      const angleSpread = isEpicenter ? Math.PI * 1.8 : isGold ? Math.PI * 1.22 : Math.PI * 1.05
       const angle = (-Math.PI / 2) + ((index / Math.max(1, pieceCount - 1)) - 0.5) * angleSpread
-      const speed = metrics.cellWidth * ((isGold ? 0.74 : 0.62) + comboStrength * 0.14 + (index % 4) * (isGold ? 0.1 : 0.08))
-      const lift = metrics.cellHeight * ((isGold ? 0.3 : 0.24) + comboStrength * 0.08 + (index % 5) * (isGold ? 0.05 : 0.04))
-      const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * ((isGold ? 0.11 : 0.08) + (index % 3) * (isGold ? 0.04 : 0.03))))
+      const speed = metrics.cellWidth * ((isGold ? 0.74 : 0.62) + comboStrength * 0.14 + (index % 4) * (isGold ? 0.1 : 0.08) + (isEpicenter ? 0.22 : 0))
+      const lift = metrics.cellHeight * ((isGold ? 0.3 : 0.24) + comboStrength * 0.08 + (index % 5) * (isGold ? 0.05 : 0.04) + (isEpicenter ? 0.12 : 0))
+      const drift = metrics.cellWidth * (((index % 2 === 0 ? -1 : 1) * ((isGold ? 0.11 : 0.08) + (index % 3) * (isGold ? 0.04 : 0.03) + (isEpicenter ? 0.05 : 0))))
       const spin = (index % 2 === 0 ? -1 : 1) * ((isGold ? 0.18 : 0.12) + (index % 4) * (isGold ? 0.05 : 0.04))
-      const shardWidth = metrics.cellWidth * ((isGold ? 0.13 : 0.11) + (index % 3) * (isGold ? 0.024 : 0.02))
-      const shardHeight = metrics.cellHeight * ((isGold ? 0.052 : 0.046) + (index % 2) * (isGold ? 0.018 : 0.015))
-      const streakLength = metrics.cellHeight * ((isGold ? 0.17 : 0.12) + (index % 3) * (isGold ? 0.04 : 0.03))
-      const circleRadius = metrics.cellWidth * ((isGold ? 0.04 : 0.032) + (index % 3) * (isGold ? 0.012 : 0.01))
-      const isDust = index >= pieceCount - (isGold ? 5 : 3)
+      const shardWidth = metrics.cellWidth * ((isGold ? 0.13 : 0.11) + (index % 3) * (isGold ? 0.024 : 0.02) + (isEpicenter ? 0.03 : 0))
+      const shardHeight = metrics.cellHeight * ((isGold ? 0.052 : 0.046) + (index % 2) * (isGold ? 0.018 : 0.015) + (isEpicenter ? 0.012 : 0))
+      const streakLength = metrics.cellHeight * ((isGold ? 0.17 : 0.12) + (index % 3) * (isGold ? 0.04 : 0.03) + (isEpicenter ? 0.08 : 0))
+      const circleRadius = metrics.cellWidth * ((isGold ? 0.04 : 0.032) + (index % 3) * (isGold ? 0.012 : 0.01) + (isEpicenter ? 0.012 : 0))
+      const isDust = index >= pieceCount - (isGold ? 5 : isEpicenter ? 8 : 3)
 
       runAnimation({
         id,
         elapsedMs: 0,
         delayMs: tile.clearDelayMs ?? 0,
-        durationMs: (isGold ? 700 : 560) + comboStrength * 110 + (index % 4) * (isGold ? 90 : 70),
+        durationMs: (isGold ? 700 : 560) + comboStrength * 110 + (index % 4) * (isGold ? 90 : 70) + (isEpicenter ? 120 : 0),
         update: (progress) => {
           const eased = easeOutQuart(progress)
           const fade = 1 - eased
@@ -664,7 +754,7 @@ export async function createBoardScene(
           graphic.alpha = 1
 
           if (isDust) {
-            graphic.fill({ color: palette.smoke, alpha: fade * ((isGold ? 0.44 : 0.34) + comboStrength * 0.12) })
+            graphic.fill({ color: palette.smoke, alpha: fade * ((isGold ? 0.44 : 0.34) + comboStrength * 0.12 + (isEpicenter ? 0.2 : 0)) })
             graphic.circle(0, 0, circleRadius * (1 + eased * 1.5))
             graphic.fill()
             return
@@ -673,7 +763,7 @@ export async function createBoardScene(
           graphic.stroke({
             color: index % 2 === 0 ? palette.secondary : palette.primary,
             width: Math.max(1, shardHeight * (isGold ? 0.72 : 0.55)),
-            alpha: fade * ((isGold ? 0.88 : 0.7) + comboStrength * 0.14),
+            alpha: fade * ((isGold ? 0.88 : 0.7) + comboStrength * 0.14 + (isEpicenter ? 0.18 : 0)),
             cap: 'round',
           })
           graphic.moveTo(-streakLength * 0.35, 0)
@@ -681,7 +771,7 @@ export async function createBoardScene(
           graphic.stroke()
           graphic.fill({
             color: index % 2 === 0 ? palette.primary : palette.secondary,
-            alpha: fade * ((isGold ? 1.08 : 1) + comboStrength * 0.12),
+            alpha: fade * ((isGold ? 1.08 : 1) + comboStrength * 0.12 + (isEpicenter ? 0.16 : 0)),
           })
           graphic.roundRect(
             -shardWidth / 2,
@@ -984,12 +1074,33 @@ export async function createBoardScene(
       if (node.clearToken !== clearToken) {
         node.clearToken = clearToken
         emitClearParticles(tile, targetCenterX, targetCenterY)
+        const isEpicenter =
+          currentModel.impactPosition?.row === tile.row &&
+          currentModel.impactPosition?.col === tile.col
         runAnimation({
           id: `clear:${tile.id}:${clearToken}`,
           elapsedMs: 0,
           delayMs: tile.clearDelayMs ?? 0,
           durationMs: TILE_CLEAR_ANIMATION_MS,
           update: (progress) => {
+            if (isEpicenter) {
+              const shatterOut = progress < 0.18 ? easeOutQuart(progress / 0.18) : 1
+              const vanish = progress < 0.12 ? progress / 0.12 : 1
+              const scatterTilt = (progress - 0.5) * 0.22
+              setTileScale(
+                node,
+                1 - shatterOut * 0.34,
+                1 - shatterOut * 0.28,
+              )
+              node.container.alpha = 1 - vanish
+              node.identity.alpha = 1 - vanish
+              node.glyph.alpha = 1 - vanish
+              node.container.y = targetCenterY + shatterOut * metrics.cellHeight * 0.03
+              node.glyph.y = node.glyphBaseY - shatterOut * metrics.cellHeight * 0.08
+              node.glyph.rotation = scatterTilt
+              return
+            }
+
             if (progress < 0.38) {
               const confirm = progress / 0.38
               const crest = Math.exp(-((confirm - 0.48) ** 2) / 0.05)
@@ -1015,7 +1126,9 @@ export async function createBoardScene(
           complete: () => {
             const rest = getRestScale(tile.selected)
             setTileScale(node, rest.x, rest.y)
-            node.container.alpha = currentModel.phase === 'clear' ? 0.3 : 1
+            node.container.alpha = 0
+            node.identity.alpha = 0
+            node.glyph.alpha = 0
             node.container.y = targetCenterY
             node.glyph.y = node.glyphBaseY
             node.glyph.rotation = 0
@@ -1069,15 +1182,27 @@ export async function createBoardScene(
       const x2 = x1 + (fullX2 - x1) * easedProgress
       const y2 = y1 + (fullY2 - y1) * easedProgress
       const color = segment.variant === 'active' ? ACTIVE_PATH : segment.variant === 'invalid' ? INVALID_PATH : EVENT_PATH
+      const eventFade =
+        segment.variant === 'event'
+          ? progress < 0.72
+            ? 1
+            : 1 - easeOutQuart((progress - 0.72) / 0.28)
+          : 1
       const alpha =
         segment.variant === 'event'
-          ? 0.94
+          ? 0.94 * eventFade
           : segment.variant === 'invalid'
             ? 0.96
             : 0.88 + Math.sin(performance.now() / 120) * 0.08
       const outlineWidth = metrics.cellWidth * 0.06
       const lineWidth = metrics.cellWidth * 0.032
-      pathLayer.stroke({ color: ACTIVE_PATH_OUTLINE, width: outlineWidth, alpha: segment.variant === 'event' ? 0.58 : 0.96, cap: 'round', join: 'round' })
+      pathLayer.stroke({
+        color: ACTIVE_PATH_OUTLINE,
+        width: outlineWidth,
+        alpha: segment.variant === 'event' ? 0.58 * eventFade : 0.96,
+        cap: 'round',
+        join: 'round',
+      })
       pathLayer.moveTo(x1, y1)
       pathLayer.lineTo(x2, y2)
       pathLayer.stroke()
@@ -1103,7 +1228,13 @@ export async function createBoardScene(
       const rightX = arrowBaseX + Math.cos(angle - Math.PI / 2) * arrowHalfHeight
       const rightY = arrowBaseY + Math.sin(angle - Math.PI / 2) * arrowHalfHeight
 
-      pathLayer.stroke({ color: ACTIVE_PATH_OUTLINE, width: outlineWidth, alpha: segment.variant === 'event' ? 0.58 : 0.96, cap: 'round', join: 'round' })
+      pathLayer.stroke({
+        color: ACTIVE_PATH_OUTLINE,
+        width: outlineWidth,
+        alpha: segment.variant === 'event' ? 0.58 * eventFade : 0.96,
+        cap: 'round',
+        join: 'round',
+      })
       pathLayer.moveTo(leftX, leftY)
       pathLayer.lineTo(arrowX, arrowY)
       pathLayer.lineTo(rightX, rightY)
@@ -1202,30 +1333,108 @@ export async function createBoardScene(
 
   function triggerImpactPulse() {
     pulseLayer.clear()
-    const centerX = app.renderer.width / 2
-    const centerY = app.renderer.height / 2
-    const maxRadius = Math.min(app.renderer.width, app.renderer.height) * 0.54
+    const impactCenter = currentModel.impactPosition
+      ? getCellCenter(currentModel.impactPosition.row, currentModel.impactPosition.col, metrics)
+      : { x: app.renderer.width / 2, y: app.renderer.height / 2 }
+    const centerX = impactCenter.x
+    const centerY = impactCenter.y
+    const localImpact = currentModel.impactPosition !== null
+    const maxRadius = localImpact
+      ? Math.min(metrics.cellWidth, metrics.cellHeight) * 1.65
+      : Math.min(app.renderer.width, app.renderer.height) * 0.54
     const comboStrength = getComboStrength(currentModel.clearCombo)
-    const pulseColor = comboStrength > 0 ? 0xb7ff87 : EVENT_PATH
+    const pulseColor = localImpact ? 0xf0d97d : comboStrength > 0 ? 0xb7ff87 : EVENT_PATH
+    const clearedIds = new Set(
+      currentModel.tiles.filter((tile) => tile.cleared).map((tile) => tile.id),
+    )
     runAnimation({
       id: `impact:${Date.now()}`,
       elapsedMs: 0,
       delayMs: 0,
-      durationMs: 300 + comboStrength * 120,
+      durationMs: localImpact ? 420 : 300 + comboStrength * 120,
       update: (progress) => {
         const eased = easeOutQuart(progress)
+        const quakeFade = 1 - easeInCubic(progress)
+        const quakeOffset = localImpact ? Math.sin(progress * Math.PI * 7) * metrics.gap * 0.4 * quakeFade : 0
+        const quakeLift = localImpact ? Math.cos(progress * Math.PI * 5.5) * metrics.gap * 0.22 * quakeFade : 0
+        tileLayer.position.set(quakeOffset, quakeLift)
+        pathLayer.position.set(quakeOffset * 1.05, quakeLift)
+        particleLayer.position.set(quakeOffset * 1.2, quakeLift * 1.1)
+        labelLayer.position.set(quakeOffset * 0.9, quakeLift * 0.9)
+        if (localImpact) {
+          const rippleRadius = metrics.cellWidth * 0.55 + eased * Math.min(app.renderer.width, app.renderer.height) * 0.88
+          const rippleWidth = metrics.cellWidth * 0.78
+          tileNodes.forEach((node) => {
+            if (clearedIds.has(node.id)) {
+              return
+            }
+            const tileCenter = getCellCenter(node.row, node.col, metrics)
+            const dx = tileCenter.x - centerX
+            const dy = tileCenter.y - centerY
+            const distance = Math.hypot(dx, dy)
+            const rippleBand = Math.exp(-((distance - rippleRadius) ** 2) / (2 * rippleWidth ** 2))
+            const epicenterBand = Math.exp(-(distance ** 2) / (2 * (metrics.cellWidth * 1.22) ** 2))
+            const influence = (rippleBand * 0.92 + epicenterBand * 1.08) * quakeFade
+            const direction = dx === 0 ? 1 : Math.sign(dx)
+            const rest = getRestScale(node.selected)
+            setTileScale(
+              node,
+              rest.x + influence * 0.045,
+              rest.y - influence * 0.07,
+            )
+            node.container.rotation = direction * influence * 0.06
+            node.glyph.y = node.glyphBaseY - influence * metrics.cellHeight * 0.12
+          })
+        }
         pulseLayer.clear()
-        pulseLayer.fill({ color: pulseColor, alpha: (1 - eased) * (0.18 + comboStrength * 0.12) })
-        pulseLayer.circle(centerX, centerY, maxRadius * ((0.45 - comboStrength * 0.04) + eased * (0.55 + comboStrength * 0.09)))
+        pulseLayer.fill({
+          color: pulseColor,
+          alpha: (1 - eased) * (localImpact ? 0.24 : 0.18 + comboStrength * 0.12),
+        })
+        pulseLayer.circle(
+          centerX,
+          centerY,
+          maxRadius *
+            (localImpact
+              ? 0.42 + eased * 0.8
+              : (0.45 - comboStrength * 0.04) + eased * (0.55 + comboStrength * 0.09)),
+        )
         pulseLayer.fill()
-        if (comboStrength > 0.01) {
-          pulseLayer.stroke({ color: 0xeaffcf, width: 2, alpha: (1 - eased) * (0.24 + comboStrength * 0.14) })
-          pulseLayer.circle(centerX, centerY, maxRadius * (0.34 + eased * 0.48))
+        if (localImpact || comboStrength > 0.01) {
+          pulseLayer.stroke({
+            color: localImpact ? 0xfff1bf : 0xeaffcf,
+            width: localImpact ? 2.5 : 2,
+            alpha: (1 - eased) * (localImpact ? 0.34 : 0.24 + comboStrength * 0.14),
+          })
+          pulseLayer.circle(
+            centerX,
+            centerY,
+            maxRadius * (localImpact ? 0.2 + eased * 1.02 : 0.34 + eased * 0.48),
+          )
+          pulseLayer.stroke()
+        }
+        if (localImpact) {
+          pulseLayer.stroke({
+            color: 0xfff6dd,
+            width: 1.5,
+            alpha: (1 - eased) * 0.26,
+          })
+          pulseLayer.circle(centerX, centerY, maxRadius * (0.58 + eased * 1.5))
           pulseLayer.stroke()
         }
       },
       complete: () => {
         pulseLayer.clear()
+        tileLayer.position.set(0, 0)
+        pathLayer.position.set(0, 0)
+        particleLayer.position.set(0, 0)
+        labelLayer.position.set(0, 0)
+        tileNodes.forEach((node) => {
+          const rest = getRestScale(node.selected)
+          setTileScale(node, rest.x, rest.y)
+          node.container.rotation = 0
+          node.glyph.y = node.glyphBaseY
+        })
       },
     })
   }
@@ -1251,7 +1460,12 @@ export async function createBoardScene(
         id: `segment:${segment.key}`,
         elapsedMs: 0,
         delayMs: segment.delayMs,
-        durationMs: segment.variant === 'event' ? 180 : segment.variant === 'invalid' ? 120 : 100,
+        durationMs:
+          segment.variant === 'event'
+            ? TILE_CLEAR_ANIMATION_MS
+            : segment.variant === 'invalid'
+              ? 120
+              : 100,
         update: (progress) => {
           segmentProgress.set(segment.key, progress)
           pathDirty = true

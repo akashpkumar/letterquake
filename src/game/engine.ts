@@ -16,6 +16,7 @@ import { COMMON_WORDS, DICTIONARY_SET } from './dictionary'
 import { getTileDefinition, TILE_DEFINITIONS } from './tileRegistry'
 import type {
   Board,
+  BoardEvaluation,
   CreateGameOptions,
   FoundWord,
   GameState,
@@ -1156,6 +1157,75 @@ function neighbors(position: Position, board: Board): Position[] {
   return result
 }
 
+function countPlayableWords(board: Board, limit = 32): number {
+  const foundWords = new Set<string>()
+
+  function dfs(position: Position, currentWord: string, visited: Set<string>) {
+    const tile = board[position.row][position.col]
+    if (!tile || foundWords.size >= limit) {
+      return
+    }
+
+    const nextWord = currentWord + tile.letter
+    if (nextWord.length > 8 || !PREFIX_SET.has(nextWord)) {
+      return
+    }
+
+    if (nextWord.length >= MIN_WORD_LENGTH && DICTIONARY_SET.has(nextWord)) {
+      foundWords.add(`${nextWord}:${[...visited, hashPosition(position)].join('|')}`)
+      if (foundWords.size >= limit) {
+        return
+      }
+    }
+
+    const nextVisited = new Set(visited)
+    nextVisited.add(hashPosition(position))
+
+    for (const neighbor of neighbors(position, board)) {
+      const key = hashPosition(neighbor)
+      if (nextVisited.has(key)) {
+        continue
+      }
+      dfs(neighbor, nextWord, nextVisited)
+      if (foundWords.size >= limit) {
+        return
+      }
+    }
+  }
+
+  for (let row = 0; row < board.length; row += 1) {
+    for (let col = 0; col < board[row].length; col += 1) {
+      if (board[row][col]) {
+        dfs({ row, col }, '', new Set())
+      }
+      if (foundWords.size >= limit) {
+        return foundWords.size
+      }
+    }
+  }
+
+  return foundWords.size
+}
+
+export function evaluateBoardState(board: Board): BoardEvaluation {
+  const straightWords = findStraightWords(board).length
+  const playableWords = countPlayableWords(board)
+  const remainingTiles = board.flat().filter(Boolean).length
+  const danger =
+    playableWords <= 1 || remainingTiles <= 4
+      ? 'critical'
+      : playableWords <= 3 || remainingTiles <= 8
+        ? 'tense'
+        : 'safe'
+
+  return {
+    playableWords,
+    straightWords,
+    remainingTiles,
+    danger,
+  }
+}
+
 export function hasPlayableWord(board: Board): boolean {
   if (findStraightWords(board).length > 0) {
     return true
@@ -1218,6 +1288,133 @@ export function hasPlayableWord(board: Board): boolean {
   }
 
   return false
+}
+
+function resolveBrokenTile(
+  board: Board,
+  position: Position,
+  rngSeed: number,
+  mode: GameMode,
+  refillQueue: RefillEntry[],
+): ResolutionResult {
+  const clearedBoard = cloneBoard(board)
+  clearedBoard[position.row][position.col] = null
+
+  const { board: gravityBoard, moved } = applyGravity(clearedBoard)
+  const steps: TurnStep[] = [
+    {
+      phase: 'clear',
+      board: cloneBoard(board),
+      words: [],
+      matchedPositions: [clonePosition(position)],
+      clearedPositions: [clonePosition(position)],
+      retainedPositions: [],
+      movedPositions: [],
+      spawnedPositions: [],
+      combo: 1,
+      scoreDelta: 0,
+    },
+    {
+      phase: 'pause-clear',
+      board: cloneBoard(clearedBoard),
+      words: [],
+      matchedPositions: [],
+      clearedPositions: [],
+      retainedPositions: [],
+      movedPositions: [],
+      spawnedPositions: [],
+      combo: 1,
+      scoreDelta: 0,
+    },
+    {
+      phase: 'gravity',
+      board: cloneBoard(gravityBoard),
+      words: [],
+      matchedPositions: [],
+      clearedPositions: [],
+      retainedPositions: [],
+      movedPositions: moved,
+      spawnedPositions: [],
+      combo: 1,
+      scoreDelta: 0,
+    },
+    {
+      phase: 'pause-refill',
+      board: cloneBoard(gravityBoard),
+      words: [],
+      matchedPositions: [],
+      clearedPositions: [],
+      retainedPositions: [],
+      movedPositions: [],
+      spawnedPositions: [],
+      combo: 1,
+      scoreDelta: 0,
+    },
+  ]
+
+  const comboResult = resolveGravityCombos(gravityBoard, 2, moved)
+
+  if (mode === 'clear-board' && isBoardEmpty(comboResult.board)) {
+    steps.push(...comboResult.steps)
+    return {
+      board: comboResult.board,
+      steps,
+      scoreDelta: comboResult.scoreDelta,
+      wordsCleared: comboResult.wordsCleared,
+      totalWordsCleared: comboResult.totalWordsCleared,
+      highestCombo: Math.max(1, comboResult.highestCombo),
+      rngSeed,
+      refillQueue,
+    }
+  }
+
+  let finalBoard = comboResult.board
+  let finalSeed = rngSeed
+  let nextRefillQueue = refillQueue
+  let spawned: Position[] = []
+
+  if (mode === 'clear-board') {
+    const refillResult = refillBoardFromQueue(comboResult.board, refillQueue)
+    const rescuedRefill = ensurePlayableRefill(refillResult.board, rngSeed, refillResult.spawned)
+    finalBoard = rescuedRefill.board
+    finalSeed = rescuedRefill.seed
+    nextRefillQueue = refillResult.refillQueue
+    spawned = refillResult.spawned
+  } else {
+    const { board: refilledBoard, spawned: endlessSpawned, seed } = refillBoard(
+      comboResult.board,
+      rngSeed,
+    )
+    const injectedRefill = injectEasyWords(refilledBoard, seed, REFILL_EASY_WORDS, endlessSpawned)
+    finalBoard = injectedRefill.board
+    finalSeed = injectedRefill.seed
+    spawned = endlessSpawned
+  }
+
+  steps.push(...comboResult.steps)
+  steps.push({
+    phase: 'refill',
+    board: cloneBoard(finalBoard),
+    words: [],
+    matchedPositions: [],
+    clearedPositions: [],
+    retainedPositions: [],
+    movedPositions: [],
+    spawnedPositions: spawned,
+    combo: Math.max(1, comboResult.highestCombo),
+    scoreDelta: 0,
+  })
+
+  return {
+    board: finalBoard,
+    steps,
+    scoreDelta: comboResult.scoreDelta,
+    wordsCleared: comboResult.wordsCleared,
+    totalWordsCleared: comboResult.totalWordsCleared,
+    highestCombo: Math.max(1, comboResult.highestCombo),
+    rngSeed: finalSeed,
+    refillQueue: nextRefillQueue,
+  }
 }
 
 function baseState(
@@ -1349,6 +1546,59 @@ export function shuffleGame(state: GameState): GameState {
     gameOver,
     won,
     rngSeed: seed,
+  }
+}
+
+export function breakTile(state: GameState, position: Position): TurnResult {
+  if (
+    state.mode !== 'clear-board' ||
+    state.shuffleCharges <= 0 ||
+    state.gameOver ||
+    !state.board[position.row]?.[position.col]
+  ) {
+    return { valid: false, reason: 'game-over', nextState: state, steps: [] }
+  }
+
+  const resolution = resolveBrokenTile(
+    state.board,
+    position,
+    state.rngSeed,
+    state.mode,
+    state.refillQueue,
+  )
+  const won = state.mode === 'clear-board' && isBoardEmpty(resolution.board)
+  const clearBoardBonus =
+    won
+      ? CLEAR_BOARD_PERFECT_CLEAR_BONUS +
+        resolution.refillQueue.length * CLEAR_BOARD_RESERVE_BONUS
+      : 0
+  const gameOver = won || !hasPlayableWord(resolution.board)
+  const totalScoreDelta = resolution.scoreDelta + clearBoardBonus
+
+  const nextState: GameState = {
+    mode: state.mode,
+    board: resolution.board,
+    refillQueue: resolution.refillQueue,
+    shuffleCharges: state.shuffleCharges - 1,
+    score: state.score + totalScoreDelta,
+    turn: state.turn + 1,
+    totalWordsCleared: state.totalWordsCleared + resolution.totalWordsCleared,
+    highestCombo: Math.max(state.highestCombo, resolution.highestCombo),
+    combo: resolution.highestCombo,
+    turnStatus: gameOver ? 'game-over' : 'ready',
+    selectedPath: [],
+    animationQueue: resolution.steps,
+    lastWords: resolution.wordsCleared,
+    lastScoreDelta: totalScoreDelta,
+    gameOver,
+    won,
+    rngSeed: resolution.rngSeed,
+  }
+
+  return {
+    valid: true,
+    nextState,
+    steps: resolution.steps,
   }
 }
 

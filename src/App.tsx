@@ -17,6 +17,8 @@ import type {
 } from './board/types'
 import {
   CLEAR_PRE_HOLD_MS,
+  CLEAR_BOARD_PERFECT_CLEAR_BONUS,
+  CLEAR_BOARD_RESERVE_BONUS,
   CLEAR_WAVE_HOLD_MS,
   CLEAR_WAVE_STAGGER_MS,
   FALL_BASE_DURATION_MS,
@@ -38,9 +40,10 @@ import {
   STEP_DURATIONS,
   TILE_CLEAR_ANIMATION_MS,
 } from './game/constants'
-import { createGame, shuffleGame, submitSelection } from './game/engine'
+import { breakTile, createGame, evaluateBoardState, shuffleGame, submitSelection } from './game/engine'
 import { getTileDefinition, STARTER_TILE_KINDS } from './game/tileRegistry'
 import type {
+  BoardEvaluation,
   FoundWord,
   GameMode,
   GameState,
@@ -56,6 +59,7 @@ interface LexplosionAppProps {
 }
 
 type ConfirmAction = 'shuffle' | 'reset'
+type RescueMode = 'break' | null
 
 const TILE_SNAP_RATIO = 0.45
 const FALL_STAGGER_MS = 72
@@ -100,6 +104,21 @@ function RestartIcon() {
       <path
         d="M7.3 6.4V3.5L3.5 7.3l3.8 3.8V8.2h6.05a5.15 5.15 0 1 1-4.62 7.43l-2 .9A7.35 7.35 0 1 0 13.35 6.4H7.3Z"
         fill="currentColor"
+      />
+    </svg>
+  )
+}
+
+function BreakIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path
+        d="M14.4 3.8 20.2 9.6l-1.8 1.8-1.3-1.3-3.2 3.2 1.1 1.1-1.8 1.8-1.1-1.1-5.5 5.5a1.7 1.7 0 0 1-2.4-2.4l5.5-5.5-1.1-1.1 1.8-1.8 1.1 1.1 3.2-3.2-1.3-1.3 1.8-1.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
       />
     </svg>
   )
@@ -236,6 +255,7 @@ export function LexplosionApp({
   const [statusMessage, setStatusMessage] = useState(initialState.statusMessage)
   const [helpOpen, setHelpOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
+  const [rescueMode, setRescueMode] = useState<RescueMode>(null)
   const dragPathRef = useRef<Position[]>([])
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
@@ -275,6 +295,10 @@ export function LexplosionApp({
     (pendingTurn && stepIndex >= pendingTurn.steps.length
       ? pendingTurn.nextState.board
       : game.board)
+  const boardEvaluation = useMemo<BoardEvaluation>(
+    () => evaluateBoardState(displayBoard),
+    [displayBoard],
+  )
   const previousStep = useMemo(
     () =>
       pendingTurn && stepIndex > 0 && stepIndex - 1 < pendingTurn.steps.length
@@ -426,6 +450,13 @@ export function LexplosionApp({
     return motion
   }, [activeStep, previousStep])
   const clearImpactActive = activeStep?.phase === 'clear'
+  const clearImpactPosition =
+    clearImpactActive &&
+    visibleClearStep &&
+    visibleClearStep.words.length === 0 &&
+    visibleClearStep.clearedPositions.length === 1
+      ? visibleClearStep.clearedPositions[0]
+      : null
   const spawnMotionMap = useMemo(() => {
     const motion = new Map<string, BoardRenderMotion>()
 
@@ -791,6 +822,7 @@ export function LexplosionApp({
       clearCombo: visibleClearStep?.combo ?? 0,
       inputLocked,
       clearImpactActive,
+      impactPosition: clearImpactPosition,
       settled: activeStep?.phase === 'pause-refill',
       tiles: boardTiles,
       segments: boardSegments,
@@ -801,6 +833,7 @@ export function LexplosionApp({
       boardSegments,
       boardTiles,
       clearImpactActive,
+      clearImpactPosition,
       displayBoard,
       floatingLabels,
       inputLocked,
@@ -820,6 +853,7 @@ export function LexplosionApp({
       invalidResetTimeoutRef.current = null
     }
     setInvalidPath([])
+    setRescueMode(null)
     setGame({ ...nextGame, board: createEmptyBoard(nextGame.board.length) })
     setPendingTurn(buildIntroTurn(nextGame))
     setStepIndex(0)
@@ -828,6 +862,13 @@ export function LexplosionApp({
 
   function switchMode() {
     resetGameToMode(game.mode === 'clear-board' ? 'endless' : 'clear-board')
+  }
+
+  function toggleBreakMode() {
+    if (inputLocked || game.mode !== 'clear-board' || game.shuffleCharges <= 0 || game.gameOver) {
+      return
+    }
+    setRescueMode((current) => (current === 'break' ? null : 'break'))
   }
 
   function handleShuffle() {
@@ -843,6 +884,7 @@ export function LexplosionApp({
     setInvalidPath([])
     setPendingTurn(null)
     setStepIndex(-1)
+    setRescueMode(null)
     setGame(nextGame)
     setStatusMessage(
       game.mode === 'clear-board'
@@ -898,6 +940,24 @@ export function LexplosionApp({
 
   function startSelection(position: Position) {
     if (inputLocked || game.gameOver) {
+      return
+    }
+
+    if (rescueMode === 'break' && game.mode === 'clear-board') {
+      const turn = breakTile(game, position)
+      if (turn.valid) {
+        setGame((current) => ({
+          ...current,
+          selectedPath: [],
+          turnStatus: 'resolving',
+          animationQueue: turn.steps,
+        }))
+        dragPathRef.current = []
+        setPendingTurn(turn)
+        setStepIndex(0)
+        setStatusMessage(`Fault opened. ${turn.nextState.shuffleCharges} rescues left.`)
+      }
+      setRescueMode(null)
       return
     }
 
@@ -1006,6 +1066,19 @@ export function LexplosionApp({
             </button>
             <button
               aria-label={
+                rescueMode === 'break'
+                  ? 'Cancel break rescue'
+                  : `Use break rescue (${game.shuffleCharges} left)`
+              }
+              className={`app__icon-button${rescueMode === 'break' ? ' app__icon-button--active' : ''}`}
+              disabled={game.mode !== 'clear-board' || game.shuffleCharges <= 0}
+              onClick={toggleBreakMode}
+              type="button"
+            >
+              <BreakIcon />
+            </button>
+            <button
+              aria-label={
                 game.mode === 'clear-board'
                   ? `Use rescue shuffle (${game.shuffleCharges} left)`
                   : `Shuffle board for -${SHUFFLE_PENALTY}`
@@ -1087,6 +1160,28 @@ export function LexplosionApp({
           </div>
         </section>
 
+        {game.mode === 'clear-board' && !game.gameOver ? (
+          <section
+            aria-label="run state"
+            className={`run-state run-state--${boardEvaluation.danger}${rescueMode === 'break' ? ' run-state--targeting' : ''}`}
+          >
+            <strong className="run-state__title">
+              {rescueMode === 'break'
+                ? 'Break armed: tap a tile to shatter it.'
+                : boardEvaluation.danger === 'critical'
+                  ? 'Critical board'
+                  : boardEvaluation.danger === 'tense'
+                    ? 'Tense board'
+                    : 'Board stable'}
+            </strong>
+            <span className="run-state__meta">
+              {boardEvaluation.playableWords} playable words
+              {boardEvaluation.straightWords > 0 ? ` • ${boardEvaluation.straightWords} straight clears` : ''}
+              {boardEvaluation.danger !== 'safe' ? ` • ${remainingTiles} tiles left` : ''}
+            </span>
+          </section>
+        ) : null}
+
         {helpOpen ? (
           <div
             aria-modal="true"
@@ -1128,6 +1223,9 @@ export function LexplosionApp({
                     ? `You get ${game.shuffleCharges} rescue shuffle${game.shuffleCharges === 1 ? '' : 's'} left this run.`
                     : `Shuffle rescues a bad board for ${SHUFFLE_PENALTY} points.`}
                 </li>
+                {game.mode === 'clear-board' ? (
+                  <li>Break rescue shatters one tile and lets gravity plus cascades resolve from the impact.</li>
+                ) : null}
               </ul>
             </section>
           </div>
@@ -1187,7 +1285,10 @@ export function LexplosionApp({
 
         {game.gameOver ? (
           <div aria-modal="true" className="help-overlay" role="dialog">
-            <section aria-label="Run over" className="help-card game-over-card">
+            <section
+              aria-label="Run over"
+              className={`help-card game-over-card${game.won ? ' game-over-card--win' : ''}`}
+            >
               <div className="help-card__header">
                 <h2>{game.won ? 'Board Cleared' : 'Run Over'}</h2>
               </div>
@@ -1232,6 +1333,14 @@ export function LexplosionApp({
                   <dd>{game.mode === 'clear-board' ? game.shuffleCharges : 'Dead Board'}</dd>
                 </div>
               </dl>
+              {game.won && game.mode === 'clear-board' ? (
+                <div className="game-over-card__bonus">
+                  <strong>Perfect clear bonus</strong>
+                  <span>
+                    +{CLEAR_BOARD_PERFECT_CLEAR_BONUS} + reserve bonus {game.refillQueue.length} × {CLEAR_BOARD_RESERVE_BONUS}
+                  </span>
+                </div>
+              ) : null}
               <div className="confirm-card__actions">
                 {!game.won && game.mode === 'clear-board' && game.shuffleCharges > 0 ? (
                   <button className="confirm-card__button" onClick={handleShuffle} type="button">

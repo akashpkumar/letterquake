@@ -55,6 +55,7 @@ export interface BoardRenderModel {
   clearCombo: number
   inputLocked: boolean
   clearImpactActive: boolean
+  impactPosition: Position | null
   settled: boolean
   tiles: BoardRenderTile[]
   segments: BoardRenderSegment[]

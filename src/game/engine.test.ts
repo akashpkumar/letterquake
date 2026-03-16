@@ -3,6 +3,8 @@ import {
   boardToRows,
   classifyWordProgress,
   createGame,
+  breakTile,
+  evaluateBoardState,
   findStraightWords,
   hasPlayableWord,
   isValidPath,
@@ -262,6 +264,40 @@ describe('engine', () => {
         expect(seenGap).toBe(false)
       }
     }
+  })
+
+  it('evaluates critical clear-board states and break rescue can trigger gravity and cascades', () => {
+    const board = makeBoardFromRows([
+      '.....',
+      'C....',
+      'X....',
+      'A....',
+      'T....',
+    ])
+    const game = createGame({
+      seed: 31,
+      mode: 'clear-board',
+      board,
+      refillQueue: [],
+      shuffleCharges: 1,
+    })
+
+    const evaluation = evaluateBoardState(game.board)
+    expect(evaluation.danger).toBe('critical')
+
+    const broken = breakTile(
+      {
+        ...game,
+        gameOver: false,
+        turnStatus: 'ready',
+      },
+      { row: 2, col: 0 },
+    )
+    expect(broken.valid).toBe(true)
+    expect(broken.nextState.shuffleCharges).toBe(0)
+    expect(broken.steps[0]?.matchedPositions).toEqual([{ row: 2, col: 0 }])
+    expect(broken.nextState.totalWordsCleared).toBeGreaterThanOrEqual(1)
+    expect(broken.nextState.board[4][0]).toBeNull()
   })
 
   it('adds bonus score when a gold tile is used', () => {

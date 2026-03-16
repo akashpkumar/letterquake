@@ -75,6 +75,12 @@
   height: 1.1rem;
 }
 
+.app__icon-button--active {
+  border-color: #6ab684;
+  background: #163122;
+  color: #dfffea;
+}
+
 .status-strip {
   display: flex;
   align-items: center;
@@ -136,6 +142,41 @@
   background: #2c2d31;
 }
 
+.run-state {
+  display: grid;
+  gap: 0.14rem;
+  margin: -0.1rem 0 0.72rem;
+  padding: 0.55rem 0.72rem;
+  border: 1px solid #2c2d31;
+  border-radius: 0.78rem;
+  background: #121213;
+}
+
+.run-state--tense {
+  border-color: #6a5b2c;
+  background: #18160f;
+}
+
+.run-state--critical {
+  border-color: #6a3a3f;
+  background: #1b1214;
+}
+
+.run-state--targeting {
+  border-color: #6ab684;
+  background: #122219;
+}
+
+.run-state__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.run-state__meta {
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
 .help-overlay {
   position: fixed;
   inset: 0;
@@ -195,6 +236,14 @@
   width: min(100%, 23rem);
 }
 
+.game-over-card--win {
+  border-color: #6ab684;
+  background:
+    radial-gradient(circle at top, rgba(114, 214, 154, 0.14), transparent 52%),
+    #121213;
+  box-shadow: 0 0 0 1px rgba(114, 214, 154, 0.08), 0 18px 40px rgba(0, 0, 0, 0.42);
+}
+
 .game-over-card__body {
   margin: 0 0 0.95rem;
   color: var(--ink-muted);
@@ -230,6 +279,28 @@
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--ink);
+}
+
+.game-over-card__bonus {
+  display: grid;
+  gap: 0.18rem;
+  margin: 0 0 1rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid #335844;
+  border-radius: 0.72rem;
+  background: #132118;
+  color: #dfffea;
+}
+
+.game-over-card__bonus strong {
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.game-over-card__bonus span {
+  font-size: 0.86rem;
+  color: #bfe6cc;
 }
 
 .confirm-card__actions {

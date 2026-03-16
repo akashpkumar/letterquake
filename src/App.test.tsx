@@ -288,6 +288,34 @@ describe('LexplosionApp', () => {
     expect(screen.getByText('Mode')).toBeInTheDocument()
   })
 
+  it('arms break rescue mode in clear-board runs', async () => {
+    const game = createGame({
+      seed: 7,
+      mode: 'clear-board',
+      board: makeBoardFromRows([
+        'CATQZ',
+        'RLMNV',
+        'SPTUW',
+        'ODGHI',
+        'YJBCD',
+      ]),
+    })
+
+    render(
+      <LexplosionApp
+        initialGame={game}
+        stepDurations={{ clear: 1, 'pause-clear': 1, gravity: 1, 'pause-refill': 1, refill: 1 }}
+      />,
+    )
+
+    await act(async () => {})
+
+    fireEvent.click(screen.getByRole('button', { name: /Use break rescue/i }))
+    await act(async () => {})
+
+    expect(screen.getByText(/Break armed: tap a tile/i)).toBeInTheDocument()
+  })
+
   it('renders score, cleared count, and game-over state', () => {
     renderApp([
       'QZXQZ',
