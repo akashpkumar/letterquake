@@ -850,6 +850,44 @@
   font-size: 0.95rem;
 }
 
+@media (max-width: 460px) {
+  .shell {
+    padding: 0.75rem;
+  }
+
+  .app__header {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .app__actions {
+    flex-wrap: wrap;
+  }
+
+  .app__mode-button {
+    min-width: 5.6rem;
+    padding: 0 0.65rem;
+  }
+
+  .status-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.38rem 0.7rem;
+    border-radius: 0.82rem;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .status-strip__group,
+  .status-strip__group--compact {
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .status-strip__divider {
+    display: none;
+  }
+}
+
 @media (min-width: 640px) {
   .shell {
     padding: 1.5rem;

@@ -936,6 +936,18 @@ function resolveGravityCombos(
 
     const { board: clearedBoard, cleared, retained } = resolveWordHit(nextBoard, words)
     steps.push({
+      phase: 'highlight',
+      board: cloneBoard(nextBoard),
+      words,
+      matchedPositions,
+      clearedPositions: [],
+      retainedPositions: [],
+      movedPositions: [],
+      spawnedPositions: [],
+      combo,
+      scoreDelta: 0,
+    })
+    steps.push({
       phase: 'clear',
       board: cloneBoard(nextBoard),
       words,
@@ -1020,6 +1032,18 @@ export function resolveSelectedWord(
   const scoreDelta = scoreFoundWord(board, resolvedWord, 1)
 
   const steps: TurnStep[] = [
+    {
+      phase: 'highlight',
+      board: cloneBoard(board),
+      words: [resolvedWord],
+      matchedPositions: matched,
+      clearedPositions: [],
+      retainedPositions: [],
+      movedPositions: [],
+      spawnedPositions: [],
+      combo: 1,
+      scoreDelta: 0,
+    },
     {
       phase: 'clear',
       board: cloneBoard(board),

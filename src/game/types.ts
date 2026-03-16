@@ -23,7 +23,7 @@ export interface RefillEntry {
   kind: TileKind
 }
 
-export type TurnPhase = 'clear' | 'pause-clear' | 'gravity' | 'pause-refill' | 'refill'
+export type TurnPhase = 'highlight' | 'clear' | 'pause-clear' | 'gravity' | 'pause-refill' | 'refill'
 export type TurnStatus = 'ready' | 'resolving' | 'game-over'
 
 export interface FoundWord {

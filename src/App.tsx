@@ -308,11 +308,14 @@ export function LexplosionApp({
   )
 
   const displayedClearWordDetails = useMemo<FoundWord[]>(() => {
-    if (activeStep?.phase === 'clear') {
+    if (activeStep?.phase === 'highlight' || activeStep?.phase === 'clear') {
       return activeStep.words
     }
 
-    if (activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear') {
+    if (
+      activeStep?.phase === 'pause-clear' &&
+      (previousStep?.phase === 'clear' || previousStep?.phase === 'highlight')
+    ) {
       return previousStep.words
     }
 
@@ -334,7 +337,7 @@ export function LexplosionApp({
   }, [clearDelayMap])
 
   const visibleClearStep =
-    activeStep?.phase === 'clear'
+    activeStep?.phase === 'highlight' || activeStep?.phase === 'clear'
       ? activeStep
       : activeStep?.phase === 'pause-clear' && previousStep?.phase === 'clear'
         ? previousStep
@@ -521,11 +524,13 @@ export function LexplosionApp({
 
     const step = pendingTurn.steps[stepIndex]
     const baseDuration = animationDurations[step.phase]
-    const duration =
+      const duration =
       step.phase === 'clear'
         ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER) +
           clearWaveDuration +
           CLEAR_WAVE_HOLD_MS
+        : step.phase === 'highlight'
+          ? baseDuration
         : step.phase === 'pause-clear'
           ? Math.round(baseDuration * MATCH_FEEDBACK_STEP_MULTIPLIER)
           : step.phase === 'refill'
@@ -693,7 +698,7 @@ export function LexplosionApp({
     }
 
     const clearGroups =
-      activeStep?.phase === 'clear'
+      activeStep?.phase === 'highlight' || activeStep?.phase === 'clear'
         ? displayedClearWordDetails
             .filter((word) => word.positions.length > 1)
             .map((word) => word.positions)

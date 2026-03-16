@@ -115,6 +115,7 @@ export const CLUSTER_FOLLOWS: Record<string, string[]> = {
 }
 
 export const STEP_DURATIONS: Record<TurnPhase, number> = {
+  highlight: 500,
   clear: 420,
   'pause-clear': 180,
   gravity: 440,

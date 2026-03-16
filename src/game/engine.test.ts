@@ -87,6 +87,8 @@ describe('engine', () => {
 
     expect(result.valid).toBe(true)
     expect(result.nextState.score).toBeGreaterThanOrEqual(90)
+    expect(result.steps[0].phase).toBe('highlight')
+    expect(result.steps[1].phase).toBe('clear')
     expect(result.steps[0].words[0].word).toBe('CAT')
   })
 
@@ -107,7 +109,7 @@ describe('engine', () => {
       19,
     )
 
-    expect(boardToRows(result.steps[2].board)[1].startsWith('XYZ')).toBe(true)
+    expect(boardToRows(result.steps[3].board)[1].startsWith('XYZ')).toBe(true)
   })
 
   it('refill restores board dimensions after clearing a word', () => {
@@ -204,7 +206,7 @@ describe('engine', () => {
     expect(result.valid).toBe(true)
     expect(result.nextState.won).toBe(true)
     expect(result.nextState.gameOver).toBe(true)
-    expect(result.nextState.lastScoreDelta).toBeGreaterThan(result.steps[0].scoreDelta)
+    expect(result.nextState.lastScoreDelta).toBeGreaterThan(result.steps[1].scoreDelta)
     expect(result.nextState.board.flat().every((tile) => tile === null)).toBe(true)
     expect(result.nextState.refillQueue).toHaveLength(2)
   })
@@ -347,13 +349,13 @@ describe('engine', () => {
       23,
     )
 
-    expect(first.steps[0].retainedPositions).toEqual([{ row: 0, col: 1 }])
-    expect(first.steps[0].clearedPositions).toEqual([
+    expect(first.steps[1].retainedPositions).toEqual([{ row: 0, col: 1 }])
+    expect(first.steps[1].clearedPositions).toEqual([
       { row: 0, col: 0 },
       { row: 0, col: 2 },
     ])
-    expect(first.steps[1].board[0][1]?.kind).toBe('cracked')
-    expect(first.steps[1].board[0][1]?.state?.durability).toBe(1)
+    expect(first.steps[2].board[0][1]?.kind).toBe('cracked')
+    expect(first.steps[2].board[0][1]?.state?.durability).toBe(1)
 
     const secondBoard = makeBoardFromRows(
       [
@@ -380,8 +382,8 @@ describe('engine', () => {
       23,
     )
 
-    expect(second.steps[0].retainedPositions).toHaveLength(0)
-    expect(second.steps[0].clearedPositions).toEqual([
+    expect(second.steps[1].retainedPositions).toHaveLength(0)
+    expect(second.steps[1].clearedPositions).toEqual([
       { row: 0, col: 0 },
       { row: 0, col: 1 },
       { row: 0, col: 2 },

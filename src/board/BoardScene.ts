@@ -27,6 +27,7 @@ interface TileNode {
   durability: number | null
   selected: boolean
   anchorPulseToken: string | null
+  highlightPulseToken: string | null
 }
 
 interface LabelNode {
@@ -240,6 +241,43 @@ function getTileFragmentPalette(kind: BoardRenderTile['kind']) {
   }
 }
 
+function getTileShatterPalette(kind: BoardRenderTile['kind']) {
+  switch (kind) {
+    case 'gold':
+      return { fill: 0x3c2d10, stroke: 0xf0cc72, highlight: 0xffefbf }
+    case 'cracked':
+      return { fill: 0x181a1c, stroke: 0x90979c, highlight: 0xdde2e6 }
+    case 'anchor':
+      return { fill: 0x11191e, stroke: 0x9fd0e8, highlight: 0xeaf9ff }
+    default:
+      return { fill: 0x141517, stroke: 0x72d69a, highlight: 0xf1fff7 }
+  }
+}
+
+function drawPolygonPiece(
+  graphic: Graphics,
+  points: number[],
+  scaleX: number,
+  scaleY: number,
+  palette: ReturnType<typeof getTileShatterPalette>,
+  alpha: number,
+) {
+  const scaled = points.map((value, index) => value * (index % 2 === 0 ? scaleX : scaleY))
+  graphic.stroke({ color: palette.stroke, width: 2, alpha, join: 'round' })
+  graphic.poly(scaled)
+  graphic.closePath()
+  graphic.stroke()
+  graphic.fill({ color: palette.fill, alpha: alpha * 0.98 })
+  graphic.poly(scaled)
+  graphic.closePath()
+  graphic.fill()
+  graphic.stroke({ color: palette.highlight, width: 1, alpha: alpha * 0.18, join: 'round' })
+  graphic.moveTo(scaled[0] * 0.32, scaled[1] * 0.32)
+  graphic.lineTo(scaled[2] * 0.24, scaled[3] * 0.24)
+  graphic.lineTo(scaled[4] * 0.18, scaled[5] * 0.18)
+  graphic.stroke()
+}
+
 function drawRoundedRect(
   graphics: Graphics,
   x: number,
@@ -251,7 +289,12 @@ function drawRoundedRect(
   graphics.roundRect(x, y, width, height, radius)
 }
 
-function drawStandardTile(graphics: Graphics, tile: BoardRenderTile, metrics: BoardMetrics) {
+function drawStandardTile(
+  graphics: Graphics,
+  tile: BoardRenderTile,
+  metrics: BoardMetrics,
+  phase: BoardRenderModel['phase'],
+) {
   const radius = metrics.radius
   const width = metrics.cellWidth
   const height = metrics.cellHeight
@@ -272,6 +315,12 @@ function drawStandardTile(graphics: Graphics, tile: BoardRenderTile, metrics: Bo
     fill = 0x2a1114
     border = 0xc44b5a
     letterTint = 0xffb7bf
+  } else if (tile.matched && phase === 'highlight') {
+    fill = tile.kind === 'gold' ? 0x433412 : tile.kind === 'anchor' ? 0x18303b : 0x1c3d29
+    border = tile.kind === 'gold' ? 0xffdf83 : tile.kind === 'anchor' ? 0xc0ecff : 0xb9ffd0
+    outlineColor = tile.kind === 'gold' ? 0xffdf83 : tile.kind === 'anchor' ? 0xc0ecff : 0xaaf2c0
+    outlineAlpha = 0.58
+    letterTint = tile.kind === 'gold' ? 0xfff8da : tile.kind === 'anchor' ? 0xf4fdff : 0xffffff
   } else if (tile.cleared) {
     fill = tile.kind === 'anchor' ? 0x0f1b16 : 0x13261a
     border = tile.kind === 'anchor' ? 0x4e6576 : tile.kind === 'gold' ? 0x6ab684 : 0x4fb06e
@@ -576,8 +625,8 @@ export async function createBoardScene(
 ): Promise<BoardScene> {
   const app = new Application()
   await app.init({
-    width: Math.max(1, mountNode.clientWidth || 1),
-    height: Math.max(1, mountNode.clientHeight || 1),
+    width: Math.max(1, Math.round(mountNode.getBoundingClientRect().width) || 1),
+    height: Math.max(1, Math.round(mountNode.getBoundingClientRect().height) || 1),
     antialias: true,
     autoDensity: true,
     backgroundAlpha: 0,
@@ -629,6 +678,116 @@ export async function createBoardScene(
     particleNodes.delete(id)
   }
 
+  function emitTileShatterPieces(tile: BoardRenderTile, centerX: number, centerY: number, isEpicenter: boolean) {
+    const palette = getTileShatterPalette(tile.kind)
+    const pieces = [
+      {
+        key: 'tl',
+        points: [-0.5, -0.5, -0.1, -0.48, -0.03, -0.1, -0.18, 0.02, -0.5, -0.05],
+        angle: -2.2,
+        distance: isEpicenter ? 0.98 : 0.56,
+        lift: isEpicenter ? 0.42 : 0.24,
+        spin: -0.32,
+      },
+      {
+        key: 'tr',
+        points: [0.08, -0.5, 0.5, -0.5, 0.5, -0.02, 0.16, 0.02, -0.02, -0.1],
+        angle: -0.95,
+        distance: isEpicenter ? 1.04 : 0.62,
+        lift: isEpicenter ? 0.48 : 0.26,
+        spin: 0.28,
+      },
+      {
+        key: 'br',
+        points: [0.02, 0.08, 0.18, -0.02, 0.5, 0.02, 0.5, 0.5, 0.08, 0.5],
+        angle: 0.82,
+        distance: isEpicenter ? 0.96 : 0.54,
+        lift: isEpicenter ? 0.36 : 0.2,
+        spin: 0.25,
+      },
+      {
+        key: 'bl',
+        points: [-0.5, 0.02, -0.14, 0.02, -0.02, 0.08, -0.08, 0.5, -0.5, 0.5],
+        angle: 2.15,
+        distance: isEpicenter ? 0.92 : 0.52,
+        lift: isEpicenter ? 0.38 : 0.22,
+        spin: -0.27,
+      },
+      {
+        key: 'tm',
+        points: [-0.08, -0.5, 0.16, -0.5, 0.08, -0.14, -0.06, -0.08],
+        angle: -1.55,
+        distance: isEpicenter ? 0.88 : 0.48,
+        lift: isEpicenter ? 0.34 : 0.18,
+        spin: 0.18,
+      },
+      {
+        key: 'rm',
+        points: [0.18, -0.08, 0.5, -0.02, 0.5, 0.24, 0.12, 0.12],
+        angle: 0.02,
+        distance: isEpicenter ? 0.82 : 0.46,
+        lift: isEpicenter ? 0.22 : 0.12,
+        spin: 0.16,
+      },
+      {
+        key: 'bm',
+        points: [-0.12, 0.12, 0.1, 0.18, 0.04, 0.5, -0.22, 0.5],
+        angle: 1.55,
+        distance: isEpicenter ? 0.86 : 0.5,
+        lift: isEpicenter ? 0.26 : 0.14,
+        spin: -0.14,
+      },
+      {
+        key: 'lm',
+        points: [-0.5, -0.04, -0.14, -0.12, -0.08, 0.12, -0.5, 0.24],
+        angle: 3.06,
+        distance: isEpicenter ? 0.8 : 0.44,
+        lift: isEpicenter ? 0.2 : 0.1,
+        spin: -0.17,
+      },
+    ]
+
+    pieces.forEach((piece, index) => {
+      const id = `shatter:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${piece.key}`
+      destroyParticle(id)
+
+      const graphic = new Graphics()
+      const node = { id, graphic }
+      particleNodes.set(id, node)
+      particleLayer.addChild(graphic)
+
+      runAnimation({
+        id,
+        elapsedMs: 0,
+        delayMs: tile.clearDelayMs ?? 0,
+        durationMs: (isEpicenter ? 700 : 520) + index * 24,
+        update: (progress) => {
+          const eased = easeOutQuart(progress)
+          const fade = 1 - eased
+          const travel = metrics.cellWidth * piece.distance * eased
+          const rise = Math.sin(progress * Math.PI) * metrics.cellHeight * piece.lift
+          graphic.clear()
+          graphic.position.set(
+            centerX + Math.cos(piece.angle) * travel,
+            centerY + Math.sin(piece.angle) * travel - rise,
+          )
+          graphic.rotation = piece.spin * progress * Math.PI * 1.8
+          drawPolygonPiece(
+            graphic,
+            piece.points,
+            metrics.cellWidth * 0.98,
+            metrics.cellHeight * 0.98,
+            palette,
+            fade,
+          )
+        },
+        complete: () => {
+          destroyParticle(id)
+        },
+      })
+    })
+  }
+
   function emitClearParticles(tile: BoardRenderTile, centerX: number, centerY: number) {
     const palette = getParticlePalette(tile.kind)
     const fragmentPalette = getTileFragmentPalette(tile.kind)
@@ -641,13 +800,26 @@ export async function createBoardScene(
     const epicenterBonus = isEpicenter ? 18 : 0
     const pieceCount = (isGold ? 28 : tile.kind === 'anchor' ? 12 : 14) + comboBonus + epicenterBonus
 
-    if (isEpicenter) {
-      const fragments = [
-        { angle: -2.2, width: 0.26, height: 0.24, distance: 1.05, lift: 0.46, spin: -0.34, offsetX: -0.18, offsetY: -0.16 },
-        { angle: -1.15, width: 0.24, height: 0.22, distance: 1.14, lift: 0.54, spin: 0.28, offsetX: 0.16, offsetY: -0.2 },
-        { angle: 0.48, width: 0.28, height: 0.24, distance: 1.08, lift: 0.42, spin: 0.31, offsetX: 0.2, offsetY: 0.12 },
-        { angle: 2.08, width: 0.25, height: 0.23, distance: 1.02, lift: 0.5, spin: -0.27, offsetX: -0.16, offsetY: 0.18 },
-      ]
+    emitTileShatterPieces(tile, centerX, centerY, isEpicenter)
+
+    if (!isEpicenter) {
+      return
+    }
+
+    {
+      const fragments = isEpicenter
+        ? [
+            { angle: -2.2, width: 0.26, height: 0.24, distance: 1.05, lift: 0.46, spin: -0.34, offsetX: -0.18, offsetY: -0.16 },
+            { angle: -1.15, width: 0.24, height: 0.22, distance: 1.14, lift: 0.54, spin: 0.28, offsetX: 0.16, offsetY: -0.2 },
+            { angle: 0.48, width: 0.28, height: 0.24, distance: 1.08, lift: 0.42, spin: 0.31, offsetX: 0.2, offsetY: 0.12 },
+            { angle: 2.08, width: 0.25, height: 0.23, distance: 1.02, lift: 0.5, spin: -0.27, offsetX: -0.16, offsetY: 0.18 },
+          ]
+        : [
+            { angle: -1.95, width: 0.18, height: 0.17, distance: 0.7, lift: 0.3, spin: -0.25, offsetX: -0.12, offsetY: -0.1 },
+            { angle: -0.7, width: 0.16, height: 0.15, distance: 0.76, lift: 0.34, spin: 0.22, offsetX: 0.12, offsetY: -0.1 },
+            { angle: 0.8, width: 0.17, height: 0.16, distance: 0.72, lift: 0.28, spin: 0.2, offsetX: 0.1, offsetY: 0.1 },
+            { angle: 2.15, width: 0.18, height: 0.17, distance: 0.68, lift: 0.32, spin: -0.23, offsetX: -0.11, offsetY: 0.12 },
+          ]
       fragments.forEach((fragment, index) => {
         const id = `fragment:${tile.id}:${currentModel.phase}:${tile.clearDelayMs ?? 0}:${index}`
         destroyParticle(id)
@@ -670,7 +842,7 @@ export async function createBoardScene(
           id,
           elapsedMs: 0,
           delayMs: tile.clearDelayMs ?? 0,
-          durationMs: 760 + index * 35,
+          durationMs: (isEpicenter ? 760 : 520) + index * (isEpicenter ? 35 : 24),
           update: (progress) => {
             const eased = easeOutQuart(progress)
             const fade = 1 - eased
@@ -682,7 +854,7 @@ export async function createBoardScene(
               startY + Math.sin(angle) * travel - rise,
             )
             graphic.rotation = spin * progress * Math.PI * 1.9
-            graphic.stroke({ color: fragmentPalette.edge, width: 2, alpha: fade, join: 'round' })
+            graphic.stroke({ color: fragmentPalette.edge, width: isEpicenter ? 2 : 1.5, alpha: fade, join: 'round' })
             graphic.moveTo(-width * 0.58, -height * 0.42)
             graphic.lineTo(width * 0.18, -height * 0.54)
             graphic.lineTo(width * 0.54, -height * 0.12)
@@ -700,7 +872,7 @@ export async function createBoardScene(
             graphic.lineTo(-width * 0.62, height * 0.12)
             graphic.closePath()
             graphic.fill()
-            graphic.stroke({ color: 0xffffff, width: 1, alpha: fade * 0.18, join: 'round' })
+            graphic.stroke({ color: 0xffffff, width: 1, alpha: fade * (isEpicenter ? 0.18 : 0.12), join: 'round' })
             graphic.moveTo(-width * 0.28, -height * 0.2)
             graphic.lineTo(width * 0.24, height * 0.08)
             graphic.lineTo(-width * 0.06, height * 0.32)
@@ -812,20 +984,20 @@ export async function createBoardScene(
   })
 
   function resize(width: number, height: number) {
-    app.renderer.resize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)))
+    app.renderer.resize(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
     metrics = getBoardMetrics(app.renderer.width, app.renderer.height, currentModel.rows, currentModel.cols)
     drawBoardBackdrop()
   }
 
   function drawBoardBackdrop() {
     backgroundLayer.clear()
-    backgroundLayer.fill({ color: BOARD_BG, alpha: 0.001 })
+    backgroundLayer.fill({ color: currentModel.phase === 'highlight' ? 0x0c110e : BOARD_BG, alpha: currentModel.phase === 'highlight' ? 0.24 : 0.001 })
     backgroundLayer.rect(0, 0, app.renderer.width, app.renderer.height)
     backgroundLayer.fill()
     for (let row = 0; row < currentModel.rows; row += 1) {
       for (let col = 0; col < currentModel.cols; col += 1) {
         const position = getCellPosition(row, col, metrics)
-        backgroundLayer.fill({ color: 0x09090a })
+        backgroundLayer.fill({ color: currentModel.phase === 'highlight' ? 0x070908 : 0x09090a })
         drawRoundedRect(
           backgroundLayer,
           position.x,
@@ -835,7 +1007,11 @@ export async function createBoardScene(
           metrics.radius,
         )
         backgroundLayer.fill()
-        backgroundLayer.stroke({ color: 0x242426, width: 1, alpha: 0.9 })
+        backgroundLayer.stroke({
+          color: currentModel.phase === 'highlight' ? 0x1d2821 : 0x242426,
+          width: 1,
+          alpha: currentModel.phase === 'highlight' ? 0.72 : 0.9,
+        })
         drawRoundedRect(
           backgroundLayer,
           position.x,
@@ -881,11 +1057,12 @@ export async function createBoardScene(
       durability: tile.durability ?? null,
       selected: tile.selected,
       anchorPulseToken: null,
+      highlightPulseToken: null,
     }
   }
 
   function updateTileNode(node: TileNode, tile: BoardRenderTile) {
-    const letterTint = drawStandardTile(node.plate, tile, metrics)
+    const letterTint = drawStandardTile(node.plate, tile, metrics, currentModel.phase)
     drawTileIdentity(node.identity, tile, metrics)
     const durabilityChanged =
       tile.kind === 'cracked' && node.durability !== null && node.durability !== (tile.durability ?? null)
@@ -1069,14 +1246,46 @@ export async function createBoardScene(
       node.anchorPulseToken = null
     }
 
+    if (tile.matched && currentModel.phase === 'highlight') {
+      const highlightPulseToken = `${tile.id}:${currentModel.phase}:${currentModel.clearCombo}`
+      if (node.highlightPulseToken !== highlightPulseToken) {
+        node.highlightPulseToken = highlightPulseToken
+        runAnimation({
+          id: `highlight:${tile.id}:${highlightPulseToken}`,
+          elapsedMs: 0,
+          delayMs: tile.clearDelayMs ?? 0,
+          durationMs: 180,
+          update: (progress) => {
+            const pulse = Math.sin(progress * Math.PI)
+            const rest = getRestScale(tile.selected)
+            setTileScale(node, rest.x + pulse * 0.14, rest.y - pulse * 0.14)
+            node.container.y = targetCenterY - pulse * metrics.cellHeight * 0.14
+            node.identity.alpha = 0.9 + pulse * 0.22
+            node.glyph.scale.set(1 + pulse * 0.08, 1 + pulse * 0.08)
+          },
+          complete: () => {
+            const rest = getRestScale(tile.selected)
+            setTileScale(node, rest.x, rest.y)
+            node.container.y = targetCenterY
+            node.identity.alpha = 1
+            node.glyph.scale.set(1, 1)
+          },
+        })
+      }
+    } else {
+      node.highlightPulseToken = null
+    }
+
     if (tile.cleared) {
       const clearToken = `${tile.clearDelayMs ?? 0}:${tile.kind}:${currentModel.phase}`
       if (node.clearToken !== clearToken) {
         node.clearToken = clearToken
-        emitClearParticles(tile, targetCenterX, targetCenterY)
         const isEpicenter =
           currentModel.impactPosition?.row === tile.row &&
           currentModel.impactPosition?.col === tile.col
+        let burstTriggered = false
+        let burstStart = 0
+        let previousWave = 0
         runAnimation({
           id: `clear:${tile.id}:${clearToken}`,
           elapsedMs: 0,
@@ -1084,6 +1293,10 @@ export async function createBoardScene(
           durationMs: TILE_CLEAR_ANIMATION_MS,
           update: (progress) => {
             if (isEpicenter) {
+              if (!burstTriggered && progress >= 0.04) {
+                burstTriggered = true
+                emitClearParticles(tile, targetCenterX, targetCenterY)
+              }
               const shatterOut = progress < 0.18 ? easeOutQuart(progress / 0.18) : 1
               const vanish = progress < 0.12 ? progress / 0.12 : 1
               const scatterTilt = (progress - 0.5) * 0.22
@@ -1106,11 +1319,21 @@ export async function createBoardScene(
               const crest = Math.exp(-((confirm - 0.48) ** 2) / 0.05)
               const trailing = Math.exp(-((confirm - 0.68) ** 2) / 0.028) * 0.42
               const wave = clamp(crest + trailing, 0, 1.08)
+              if (!burstTriggered && confirm > 0.2 && wave < previousWave && previousWave > 0.96) {
+                burstTriggered = true
+                burstStart = confirm
+                emitClearParticles(tile, targetCenterX, targetCenterY)
+              }
+              previousWave = wave
               setTileScale(node, 1 - wave * 0.09, 1 + wave * 0.16)
               node.container.y = targetCenterY - wave * metrics.cellHeight * 0.22
               node.glyph.y = node.glyphBaseY - wave * metrics.cellHeight * 0.12
               node.glyph.rotation = (confirm - 0.48) * 0.22 * wave
-              node.container.alpha = 1
+              node.container.alpha = burstTriggered
+                ? Math.max(0, 1 - (confirm - burstStart) / 0.16)
+                : 1
+              node.identity.alpha = node.container.alpha
+              node.glyph.alpha = node.container.alpha
               return
             }
 
@@ -1120,7 +1343,9 @@ export async function createBoardScene(
             node.glyph.y = node.glyphBaseY
             const rest = getRestScale(tile.selected)
             setTileScale(node, rest.x, rest.y)
-            node.container.alpha = 1 - eased * 0.78
+            node.container.alpha = burstTriggered ? 0 : 1 - eased * 0.78
+            node.identity.alpha = node.container.alpha
+            node.glyph.alpha = node.container.alpha
             node.glyph.rotation = 0
           },
           complete: () => {
