@@ -355,6 +355,14 @@ function drawStandardTile(
   graphics.stroke({ color: border, width: 2, alpha: borderAlpha })
   drawRoundedRect(graphics, 0, 0, width, height, radius)
   graphics.stroke()
+  if (tile.kind === 'anchor') {
+    graphics.stroke({ color: 0x24313a, width: 4, alpha: 0.8 })
+    drawRoundedRect(graphics, 1.5, 1.5, width - 3, height - 3, Math.max(6, radius - 2))
+    graphics.stroke()
+    graphics.fill({ color: 0x0b0f12, alpha: 0.18 })
+    drawRoundedRect(graphics, 5, 5, width - 10, height - 10, Math.max(4, radius - 6))
+    graphics.fill()
+  }
   graphics.tint = 0xffffff
   return letterTint
 }
@@ -555,8 +563,8 @@ function drawCrackedIdentity(graphics: Graphics, metrics: BoardMetrics, durabili
 }
 
 function drawAnchorIdentity(graphics: Graphics, metrics: BoardMetrics) {
-  const inset = Math.max(5, metrics.cellWidth * 0.06)
-  graphics.stroke({ color: 0xa9d3ed, width: 1, alpha: 0.16 })
+  const inset = Math.max(6, metrics.cellWidth * 0.08)
+  graphics.stroke({ color: 0xbadcf0, width: 1.4, alpha: 0.18 })
   drawRoundedRect(
     graphics,
     inset,
@@ -566,16 +574,15 @@ function drawAnchorIdentity(graphics: Graphics, metrics: BoardMetrics) {
     Math.max(4, metrics.radius - 6),
   )
   graphics.stroke()
-
-  const bracketInset = Math.max(4, metrics.cellWidth * 0.04)
-  const bracketLength = metrics.cellWidth * 0.15
-  graphics.stroke({ color: 0x7f98aa, width: 1.5, alpha: 0.68, cap: 'round' })
-  graphics.moveTo(bracketInset, bracketInset + bracketLength)
-  graphics.lineTo(bracketInset, bracketInset)
-  graphics.lineTo(bracketInset + bracketLength, bracketInset)
-  graphics.moveTo(metrics.cellWidth - bracketInset - bracketLength, bracketInset)
-  graphics.lineTo(metrics.cellWidth - bracketInset, bracketInset)
-  graphics.lineTo(metrics.cellWidth - bracketInset, bracketInset + bracketLength)
+  graphics.stroke({ color: 0x6a8394, width: 1, alpha: 0.42 })
+  drawRoundedRect(
+    graphics,
+    inset + 4,
+    inset + 4,
+    metrics.cellWidth - (inset + 4) * 2,
+    metrics.cellHeight - (inset + 4) * 2,
+    Math.max(3, metrics.radius - 10),
+  )
   graphics.stroke()
 }
 
