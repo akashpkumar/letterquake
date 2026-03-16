@@ -60,6 +60,22 @@ interface LexplosionAppProps {
 type ConfirmAction = 'reset'
 type PowerMode = 'break' | 'swap' | 'reroll' | null
 type Lifelines = Record<Exclude<PowerMode, null>, number>
+type PowerAnimationState =
+  | {
+      kind: 'swap'
+      token: string
+      tileIds: [string, string]
+      positions: [Position, Position]
+      durationMs: number
+    }
+  | {
+      kind: 'reroll'
+      token: string
+      tileId: string
+      fromLetter: string
+      durationMs: number
+    }
+  | null
 
 const TILE_SNAP_RATIO = 0.45
 const FALL_STAGGER_MS = 72
@@ -68,6 +84,8 @@ const REFILL_STAGGER_MS = 88
 const REFILL_COLUMN_STAGGER_MS = 64
 const SCORE_TWEEN_MS = 720
 const TITLE_MODE_HOLD_MS = 800
+const SWAP_POWER_DURATION_MS = 360
+const REROLL_POWER_DURATION_MS = 620
 const INITIAL_LIFELINES: Lifelines = { break: 1, swap: 1, reroll: 1 }
 
 function easeOutCubic(progress: number) {
@@ -275,9 +293,12 @@ export function LexplosionApp({
   const [powerMode, setPowerMode] = useState<PowerMode>(null)
   const [lifelines, setLifelines] = useState<Lifelines>(INITIAL_LIFELINES)
   const [swapAnchor, setSwapAnchor] = useState<Position | null>(null)
+  const [powerAnimation, setPowerAnimation] = useState<PowerAnimationState>(null)
+  const [powerAnimating, setPowerAnimating] = useState(false)
   const dragPathRef = useRef<Position[]>([])
   const invalidResetTimeoutRef = useRef<number | null>(null)
   const titleHoldTimeoutRef = useRef<number | null>(null)
+  const powerAnimationTimeoutRef = useRef<number | null>(null)
   const [invalidPath, setInvalidPath] = useState<Position[]>([])
   const [displayedScore, setDisplayedScore] = useState(initialState.game.score)
   const displayedScoreRef = useRef(initialState.game.score)
@@ -305,7 +326,7 @@ export function LexplosionApp({
     () => ({ ...STEP_DURATIONS, ...stepDurations }),
     [stepDurations],
   )
-  const inputLocked = pendingTurn !== null || game.turnStatus === 'resolving'
+  const inputLocked = pendingTurn !== null || game.turnStatus === 'resolving' || powerAnimating
   const activeStep: TurnStep | null =
     pendingTurn && stepIndex >= 0 && stepIndex < pendingTurn.steps.length
       ? pendingTurn.steps[stepIndex]
@@ -677,6 +698,9 @@ export function LexplosionApp({
       if (titleHoldTimeoutRef.current !== null) {
         window.clearTimeout(titleHoldTimeoutRef.current)
       }
+      if (powerAnimationTimeoutRef.current !== null) {
+        window.clearTimeout(powerAnimationTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -819,6 +843,11 @@ export function LexplosionApp({
         }
 
         const positionKey = hashPosition({ row: rowIndex, col: colIndex })
+        const swapAnchorSelected =
+          powerMode === 'swap' &&
+          swapAnchor !== null &&
+          swapAnchor.row === rowIndex &&
+          swapAnchor.col === colIndex
         tiles.push({
           id: tile.id,
           row: rowIndex,
@@ -826,7 +855,7 @@ export function LexplosionApp({
           letter: tile.letter,
           kind: tile.kind,
           durability: tile.state?.durability,
-          selected: highlightedPositions.selected.has(positionKey),
+          selected: highlightedPositions.selected.has(positionKey) || swapAnchorSelected,
           invalid: highlightedPositions.invalid.has(positionKey),
           matched: highlightedPositions.matched.has(positionKey),
           cleared: highlightedPositions.cleared.has(positionKey),
@@ -834,7 +863,30 @@ export function LexplosionApp({
           spawned: highlightedPositions.spawned.has(positionKey),
           selectedOrder: selectedOrderMap.get(positionKey),
           clearDelayMs: clearDelayMap.get(positionKey) ?? 0,
-          motion: fallMotionMap.get(tile.id) ?? spawnMotionMap.get(tile.id),
+          motion:
+            powerAnimation?.kind === 'swap' && powerAnimation.tileIds.includes(tile.id)
+              ? {
+                  kind: 'swap',
+                  fromRow:
+                    tile.id === powerAnimation.tileIds[0]
+                      ? powerAnimation.positions[0].row
+                      : powerAnimation.positions[1].row,
+                  fromCol:
+                    tile.id === powerAnimation.tileIds[0]
+                      ? powerAnimation.positions[0].col
+                      : powerAnimation.positions[1].col,
+                  delayMs: 0,
+                  durationMs: powerAnimation.durationMs,
+                }
+              : fallMotionMap.get(tile.id) ?? spawnMotionMap.get(tile.id),
+          reroll:
+            powerAnimation?.kind === 'reroll' && powerAnimation.tileId === tile.id
+              ? {
+                  token: powerAnimation.token,
+                  fromLetter: powerAnimation.fromLetter,
+                  durationMs: powerAnimation.durationMs,
+                }
+              : undefined,
         })
       })
     })
@@ -850,8 +902,11 @@ export function LexplosionApp({
     highlightedPositions.retained,
     highlightedPositions.selected,
     highlightedPositions.spawned,
+    powerMode,
+    powerAnimation,
     selectedOrderMap,
     spawnMotionMap,
+    swapAnchor,
   ])
   const boardModel = useMemo<BoardRenderModel>(
     () => ({
@@ -891,10 +946,16 @@ export function LexplosionApp({
       window.clearTimeout(invalidResetTimeoutRef.current)
       invalidResetTimeoutRef.current = null
     }
+    if (powerAnimationTimeoutRef.current !== null) {
+      window.clearTimeout(powerAnimationTimeoutRef.current)
+      powerAnimationTimeoutRef.current = null
+    }
     setInvalidPath([])
     setPowerMode(null)
     setSwapAnchor(null)
     setLifelines(INITIAL_LIFELINES)
+    setPowerAnimation(null)
+    setPowerAnimating(false)
     setDisplayedScore(nextGame.score)
     displayedScoreRef.current = nextGame.score
     setDisplayedScoreDelta(nextGame.lastScoreDelta)
@@ -986,6 +1047,8 @@ export function LexplosionApp({
       const turn = breakTile(game, position)
       if (turn.valid) {
         dragPathRef.current = []
+        setPowerAnimation(null)
+        setPowerAnimating(false)
         setLifelines((current) => ({ ...current, break: Math.max(0, current.break - 1) }))
         setGame((current) => ({
           ...current,
@@ -1010,11 +1073,30 @@ export function LexplosionApp({
 
       if (!swapAnchor) {
         setSwapAnchor(position)
-        setStatusMessage('Pick the second tile to swap.')
+        setStatusMessage('Swap armed.')
       } else {
+        const firstTile = game.board[swapAnchor.row]?.[swapAnchor.col]
         const nextGame = swapTiles(game, swapAnchor, position)
         if (nextGame !== game) {
           dragPathRef.current = []
+          if (powerAnimationTimeoutRef.current !== null) {
+            window.clearTimeout(powerAnimationTimeoutRef.current)
+          }
+          if (firstTile && tile) {
+            setPowerAnimation({
+              kind: 'swap',
+              token: `swap:${Date.now()}:${firstTile.id}:${tile.id}`,
+              tileIds: [firstTile.id, tile.id],
+              positions: [swapAnchor, position],
+              durationMs: SWAP_POWER_DURATION_MS,
+            })
+            setPowerAnimating(true)
+            powerAnimationTimeoutRef.current = window.setTimeout(() => {
+              setPowerAnimating(false)
+              setPowerAnimation(null)
+              powerAnimationTimeoutRef.current = null
+            }, SWAP_POWER_DURATION_MS)
+          }
           setGame(nextGame)
           setLifelines((current) => ({ ...current, swap: Math.max(0, current.swap - 1) }))
           setStatusMessage('Tiles swapped.')
@@ -1026,9 +1108,28 @@ export function LexplosionApp({
     }
 
     if (powerMode === 'reroll' && lifelines.reroll > 0) {
+      const currentTile = game.board[position.row]?.[position.col]
       const nextGame = rerollTile(game, position)
       if (nextGame !== game) {
         dragPathRef.current = []
+        if (powerAnimationTimeoutRef.current !== null) {
+          window.clearTimeout(powerAnimationTimeoutRef.current)
+        }
+        if (currentTile) {
+          setPowerAnimation({
+            kind: 'reroll',
+            token: `reroll:${Date.now()}:${currentTile.id}`,
+            tileId: currentTile.id,
+            fromLetter: currentTile.letter,
+            durationMs: REROLL_POWER_DURATION_MS,
+          })
+          setPowerAnimating(true)
+          powerAnimationTimeoutRef.current = window.setTimeout(() => {
+            setPowerAnimating(false)
+            setPowerAnimation(null)
+            powerAnimationTimeoutRef.current = null
+          }, REROLL_POWER_DURATION_MS)
+        }
         setGame(nextGame)
         setLifelines((current) => ({ ...current, reroll: Math.max(0, current.reroll - 1) }))
         setStatusMessage('Tile rerolled.')

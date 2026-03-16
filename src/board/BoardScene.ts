@@ -28,6 +28,7 @@ interface TileNode {
   selected: boolean
   anchorPulseToken: string | null
   highlightPulseToken: string | null
+  rerollToken: string | null
 }
 
 interface LabelNode {
@@ -111,6 +112,7 @@ const FLOAT_SYSTEM_STYLE = new TextStyle({
   fill: 0xf4f4f5,
   stroke: { color: 0x111214, width: 5, join: 'round' },
 })
+const SCRAMBLE_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -1058,6 +1060,7 @@ export async function createBoardScene(
       selected: tile.selected,
       anchorPulseToken: null,
       highlightPulseToken: null,
+      rerollToken: null,
     }
   }
 
@@ -1100,6 +1103,18 @@ export async function createBoardScene(
         delayMs: motion.delayMs,
         durationMs: motion.durationMs,
         update: (progress) => {
+          if (motion.kind === 'swap') {
+            const eased = easeInOutCubic(progress)
+            const arc = Math.sin(progress * Math.PI) * metrics.cellHeight * 0.12
+            node.container.x = fromCenterX + (targetCenterX - fromCenterX) * eased
+            node.container.y =
+              fromCenterY + (targetCenterY - fromCenterY) * eased - arc
+            const squash = Math.sin(progress * Math.PI) * 0.06
+            setTileScale(node, 1 + squash, 1 - squash)
+            node.container.alpha = 1
+            return
+          }
+
           if (motion.kind === 'fall') {
             const fallProgress = progress < 0.8 ? easeInCubic(progress / 0.8) : 1
             const settleProgress = progress < 0.8 ? 0 : (progress - 0.8) / 0.2
@@ -1150,6 +1165,38 @@ export async function createBoardScene(
       node.container.alpha = 1
       const rest = getRestScale(tile.selected)
       setTileScale(node, rest.x, rest.y)
+    }
+
+    if (tile.reroll && node.rerollToken !== tile.reroll.token) {
+      node.rerollToken = tile.reroll.token
+      node.glyph.text = tile.reroll.fromLetter
+      runAnimation({
+        id: `reroll:${tile.id}:${tile.reroll.token}`,
+        elapsedMs: 0,
+        delayMs: 0,
+        durationMs: tile.reroll.durationMs,
+        update: (progress) => {
+          const eased = easeOutQuart(progress)
+          const pulse = Math.sin(progress * Math.PI) * 0.08
+          const scrambleIndex = Math.min(
+            SCRAMBLE_LETTERS.length - 1,
+            Math.floor(progress * 18) % SCRAMBLE_LETTERS.length,
+          )
+          const scrambleLetter = SCRAMBLE_LETTERS[scrambleIndex]
+          node.glyph.text = progress < 0.82 ? scrambleLetter : tile.letter
+          node.glyph.scale.set(1 + pulse * 0.6, 1 - pulse * 0.18)
+          node.glyph.rotation = Math.sin(progress * Math.PI * 4) * 0.05 * (1 - eased)
+          node.glyph.alpha = 0.85 + Math.sin(progress * Math.PI) * 0.15
+        },
+        complete: () => {
+          node.glyph.text = tile.letter
+          node.glyph.scale.set(1, 1)
+          node.glyph.rotation = 0
+          node.glyph.alpha = 1
+        },
+      })
+    } else if (!tile.reroll) {
+      node.rerollToken = null
     }
 
     if (tile.selected !== node.selected) {

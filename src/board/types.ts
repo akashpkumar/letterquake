@@ -2,7 +2,7 @@ import type { Position, TileKind, TurnPhase } from '../game/types'
 
 export type BoardPathVariant = 'active' | 'invalid' | 'event'
 export type BoardLabelVariant = 'word' | 'score' | 'auto-word' | 'auto-score' | 'combo' | 'system'
-export type BoardMotionKind = 'fall' | 'spawn'
+export type BoardMotionKind = 'fall' | 'spawn' | 'swap'
 
 export interface BoardRenderMotion {
   kind: BoardMotionKind
@@ -28,6 +28,11 @@ export interface BoardRenderTile {
   selectedOrder?: number
   clearDelayMs?: number
   motion?: BoardRenderMotion
+  reroll?: {
+    token: string
+    fromLetter: string
+    durationMs: number
+  }
 }
 
 export interface BoardRenderSegment {

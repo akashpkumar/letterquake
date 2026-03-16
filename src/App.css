@@ -171,7 +171,11 @@
 }
 
 .power-card--spent {
-  opacity: 0.34;
+  border-color: #1e1f22;
+  background: #0b0b0c;
+  color: #4b4d52;
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24);
 }
 
 .power-card__topline {
@@ -199,12 +203,20 @@
   height: 0.95rem;
 }
 
+.power-card--spent .power-card__icon {
+  color: #4b4d52;
+}
+
 .power-card__title {
   font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   line-height: 1;
+}
+
+.power-card--spent .power-card__title {
+  color: #5a5d63;
 }
 
 .help-overlay {
