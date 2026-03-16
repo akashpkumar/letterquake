@@ -623,12 +623,17 @@ export async function createBoardScene(
   mountNode: HTMLDivElement,
   initialModel: BoardRenderModel,
 ): Promise<BoardScene> {
+  const initialRect = mountNode.getBoundingClientRect()
+  const initialWidth = Math.max(1, Math.round(initialRect.width) || 1)
+  const initialHeight = Math.max(1, Math.round(initialRect.height) || 1)
+  const resolution = Math.max(1, window.devicePixelRatio || 1)
   const app = new Application()
   await app.init({
-    width: Math.max(1, Math.round(mountNode.getBoundingClientRect().width) || 1),
-    height: Math.max(1, Math.round(mountNode.getBoundingClientRect().height) || 1),
+    width: initialWidth,
+    height: initialHeight,
     antialias: true,
     autoDensity: true,
+    resolution,
     backgroundAlpha: 0,
     preference: 'webgl',
   })
@@ -661,7 +666,7 @@ export async function createBoardScene(
   const particleNodes = new Map<string, ParticleNode>()
   const segmentProgress = new Map<string, number>()
   const animations = new Map<string, Animation>()
-  let metrics = getBoardMetrics(app.renderer.width, app.renderer.height, initialModel.rows, initialModel.cols)
+  let metrics = getBoardMetrics(initialWidth, initialHeight, initialModel.rows, initialModel.cols)
   let currentModel = initialModel
   let pathDirty = true
 
@@ -984,15 +989,17 @@ export async function createBoardScene(
   })
 
   function resize(width: number, height: number) {
-    app.renderer.resize(Math.max(1, Math.round(width)), Math.max(1, Math.round(height)))
-    metrics = getBoardMetrics(app.renderer.width, app.renderer.height, currentModel.rows, currentModel.cols)
+    const cssWidth = Math.max(1, Math.round(width))
+    const cssHeight = Math.max(1, Math.round(height))
+    app.renderer.resize(cssWidth, cssHeight)
+    metrics = getBoardMetrics(cssWidth, cssHeight, currentModel.rows, currentModel.cols)
     drawBoardBackdrop()
   }
 
   function drawBoardBackdrop() {
     backgroundLayer.clear()
     backgroundLayer.fill({ color: currentModel.phase === 'highlight' ? 0x0c110e : BOARD_BG, alpha: currentModel.phase === 'highlight' ? 0.24 : 0.001 })
-    backgroundLayer.rect(0, 0, app.renderer.width, app.renderer.height)
+    backgroundLayer.rect(0, 0, metrics.width, metrics.height)
     backgroundLayer.fill()
     for (let row = 0; row < currentModel.rows; row += 1) {
       for (let col = 0; col < currentModel.cols; col += 1) {
